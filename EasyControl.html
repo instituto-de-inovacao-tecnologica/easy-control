@@ -212,6 +212,19 @@
         .combo-card .inputs { font-weight: 700; color: #e67e22; font-size: 14px; min-width: 120px; }
         .combo-card .outputs { font-size: 12px; color: #5a6a7a; flex: 1; }
         .combo-card .step { font-size: 11px; color: #2980b9; background: #ebf5fb; padding: 3px 8px; border-radius: 4px; }
+        @keyframes sid-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes sid-pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+        .sid-loading-overlay {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 32px 16px; gap: 16px;
+        }
+        .sid-spinner {
+            width: 40px; height: 40px; border: 4px solid #e0e4e8;
+            border-top: 4px solid #2980b9; border-radius: 50%;
+            animation: sid-spin 0.8s linear infinite;
+        }
+        .sid-loading-text { font-size: 14px; color: #5a6a7a; font-weight: 600; text-align: center; }
+        .sid-loading-hint { font-size: 11px; color: #95a5a6; text-align: center; animation: sid-pulse 2s ease-in-out infinite; }
     </style>
 </head>
 <body>
@@ -5253,19 +5266,43 @@ function sidEstimate() {
         return;
     }
     const method = document.getElementById('sid_method').value;
-    try {
-        if (method === 'tfest') sidEstimateTFest();
-        else if (method === 'tf1') sidEstimateTF1();
-        else if (method === 'tf1d') sidEstimateTF1D();
-        else if (method === 'tf2') sidEstimateTF2();
-        else if (method === 'arx') sidEstimateARX();
-        else if (method === 'ss') sidEstimateSS();
-    } catch (e) {
-        document.getElementById('sid_model_result').innerHTML = '<span style="color:#e74c3c;">Erro na estimacao: ' + e.message + '</span>';
-        console.error('SysId error:', e);
+
+    // Methods that use heavy optimization show loading animation
+    const heavyMethods = ['tfest'];
+    if (heavyMethods.includes(method)) {
+        // Show loading overlay
+        document.getElementById('sid_model_result').innerHTML =
+            '<div class="sid-loading-overlay">' +
+            '<div class="sid-spinner"></div>' +
+            '<div class="sid-loading-text">Estimando modelo...</div>' +
+            '<div class="sid-loading-hint">Este metodo utiliza otimizacao iterativa e pode levar alguns segundos dependendo da quantidade de dados.</div>' +
+            '</div>';
+        document.getElementById('sid_params').innerHTML = '';
+        document.getElementById('sid_fit_info').innerHTML = '';
+
+        // Use setTimeout to let the DOM render the loading state before heavy computation
+        setTimeout(function() {
+            try {
+                sidEstimateTFest();
+            } catch (e) {
+                document.getElementById('sid_model_result').innerHTML = '<span style="color:#e74c3c;">Erro na estimacao: ' + e.message + '</span>';
+                console.error('SysId error:', e);
+            }
+            try { updateSidStore(); } catch(e2) {}
+        }, 50);
+    } else {
+        try {
+            if (method === 'tf1') sidEstimateTF1();
+            else if (method === 'tf1d') sidEstimateTF1D();
+            else if (method === 'tf2') sidEstimateTF2();
+            else if (method === 'arx') sidEstimateARX();
+            else if (method === 'ss') sidEstimateSS();
+        } catch (e) {
+            document.getElementById('sid_model_result').innerHTML = '<span style="color:#e74c3c;">Erro na estimacao: ' + e.message + '</span>';
+            console.error('SysId error:', e);
+        }
+        try { updateSidStore(); } catch(e2) {}
     }
-    // Update g_tfStore from sid_model
-    try { updateSidStore(); } catch(e2) {}
 }
 
 function updateSidStore() {
@@ -5301,6 +5338,7 @@ function updateSidStore() {
 
 // ---- tfest: G(s) = (b_m*s^m + ... + b_0) / (s^n + a_{n-1}*s^{n-1} + ... + a_0) ----
 // Like MATLAB: sys = tfest(data, np, nz)
+// Uses Output-Error method with continuous-time simulation for accurate identification
 function sidEstimateTFest() {
     const np = parseInt(document.getElementById('sid_np').value) || 2;
     const nz = parseInt(document.getElementById('sid_nz').value) || 0;
@@ -5312,16 +5350,91 @@ function sidEstimateTFest() {
     const N = sid_t.length;
     const Ts = sid_Ts;
 
-    // Use discrete-time ARX identification then convert to continuous TF
-    // Map: np poles -> na=np, nz zeros -> nb=nz+1, nk=1
-    const na = np, nb = nz + 1, nk = 1;
-    const start = Math.max(na, nb + nk - 1);
-    if (N <= start + na + nb) {
-        document.getElementById('sid_model_result').innerHTML = '<span style="color:#e74c3c;">Dados insuficientes para np=' + np + ', nz=' + nz + '. Minimo ' + (start + na + nb + 1) + ' pontos.</span>';
+    if (N < np + nz + 3) {
+        document.getElementById('sid_model_result').innerHTML = '<span style="color:#e74c3c;">Dados insuficientes para np=' + np + ', nz=' + nz + '. Minimo ' + (np + nz + 3) + ' pontos.</span>';
         return;
     }
 
-    // Build regression matrix for ARX
+    // Simulate continuous TF G(s) = num(s)/den(s) using RK4 in controllable canonical form
+    // den(s) = s^np + a_{np-1}*s^{np-1} + ... + a_0
+    // num(s) = b_nz*s^nz + ... + b_0
+    // State-space (controllable canonical form):
+    //   x' = Ac*x + Bc*u,  y = Cc*x
+    function simulateTF(denCoeffs, numCoeffs, u, t, Ts) {
+        // denCoeffs: [a0, a1, ..., a_{np-1}] (leading s^np = 1 implicit)
+        // numCoeffs: [b0, b1, ..., b_nz]
+        const n = denCoeffs.length; // = np
+        const x = new Array(n).fill(0);
+        const yOut = new Array(t.length).fill(0);
+        const nSub = 10; // sub-steps per sample for higher integration accuracy
+
+        // dx/dt = f(x, u_k)
+        function deriv(xx, uk) {
+            const dx = new Array(n).fill(0);
+            for (let i = 0; i < n - 1; i++) dx[i] = xx[i + 1];
+            let sum = 0;
+            for (let i = 0; i < n; i++) sum -= denCoeffs[i] * xx[i];
+            sum += uk;
+            dx[n - 1] = sum;
+            return dx;
+        }
+
+        for (let k = 0; k < t.length; k++) {
+            // Output: y = c' * x where c corresponds to num coefficients
+            let y = 0;
+            for (let i = 0; i < numCoeffs.length && i < n; i++) {
+                y += numCoeffs[i] * x[i];
+            }
+            yOut[k] = y;
+
+            // RK4 integration with sub-stepping for precision
+            if (k < t.length - 1) {
+                const H = t[k + 1] - t[k];
+                const h = H / nSub;
+                const uk = u[k];
+                const uk1 = u[Math.min(k + 1, u.length - 1)];
+
+                for (let s = 0; s < nSub; s++) {
+                    const frac = s / nSub;
+                    const uNow = uk + (uk1 - uk) * frac;
+                    const uMid = uk + (uk1 - uk) * (frac + 0.5 / nSub);
+                    const uEnd = uk + (uk1 - uk) * (frac + 1.0 / nSub);
+
+                    const k1 = deriv(x, uNow);
+                    const x2 = x.map((xi, i) => xi + 0.5 * h * k1[i]);
+                    const k2 = deriv(x2, uMid);
+                    const x3 = x.map((xi, i) => xi + 0.5 * h * k2[i]);
+                    const k3 = deriv(x3, uMid);
+                    const x4 = x.map((xi, i) => xi + h * k3[i]);
+                    const k4 = deriv(x4, uEnd);
+
+                    for (let i = 0; i < n; i++) {
+                        x[i] += (h / 6) * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]);
+                    }
+                }
+            }
+        }
+        return yOut;
+    }
+
+    // Cost function: sum of squared errors between simulated and measured output
+    function costFunction(params) {
+        const denCoeffs = params.slice(0, np);       // [a0, a1, ..., a_{np-1}]
+        const numCoeffs = params.slice(np, np + nz + 1); // [b0, b1, ..., b_nz]
+        const yHat = simulateTF(denCoeffs, numCoeffs, sid_u, sid_t, Ts);
+        let cost = 0;
+        for (let i = 0; i < N; i++) {
+            const e = sid_y[i] - yHat[i];
+            cost += e * e;
+            if (!isFinite(cost)) return 1e20;
+        }
+        return cost;
+    }
+
+    // Initialize with ARX-based estimate then refine with Output-Error optimization
+    // Step 1: Get initial guess from ARX + Tustin
+    const na = np, nb = nz + 1, nk = 1;
+    const start = Math.max(na, nb + nk - 1);
     const nParams = na + nb;
     const Phi = [], Y = [];
     for (let k = start; k < N; k++) {
@@ -5332,87 +5445,254 @@ function sidEstimateTFest() {
         Y.push(sid_y[k]);
     }
 
+    let initDen = new Array(np).fill(0);
+    let initNum = new Array(nz + 1).fill(0);
+
     const theta = sidLeastSquares(Phi, Y, nParams);
-    if (!theta) {
-        document.getElementById('sid_model_result').innerHTML = '<span style="color:#e74c3c;">Falha nos minimos quadrados.</span>';
-        return;
+    if (theta) {
+        // Convert ARX to continuous via Tustin for initial guess
+        const a_d = theta.slice(0, na);
+        const b_d = theta.slice(na, na + nb);
+        const T2 = Ts / 2;
+
+        function tustinPolyConvert(coeffs_z) {
+            const n = coeffs_z.length - 1;
+            const result = new Array(n + 1).fill(0);
+            for (let k = 0; k <= n; k++) {
+                const p = n - k;
+                const q = k;
+                for (let i = 0; i <= p; i++) {
+                    for (let j = 0; j <= q; j++) {
+                        const deg = i + j;
+                        if (deg > n) continue;
+                        const val = coeffs_z[k] * binomial(p, i) * binomial(q, j) * Math.pow(-1, j) * Math.pow(T2, deg);
+                        result[deg] += val;
+                    }
+                }
+            }
+            return result;
+        }
+
+        const A_z = [1, ...a_d];
+        const B_z = [...b_d];
+        while (B_z.length < A_z.length) B_z.push(0);
+
+        const den_s = tustinPolyConvert(A_z);
+        const num_s = tustinPolyConvert(B_z);
+
+        const denHigh = den_s[np];
+        if (Math.abs(denHigh) > 1e-15) {
+            for (let i = 0; i < np; i++) initDen[i] = den_s[i] / denHigh;
+            for (let i = 0; i <= nz; i++) initNum[i] = (i < num_s.length) ? num_s[i] / denHigh : 0;
+        }
     }
 
-    const a_d = theta.slice(0, na);  // discrete A polynomial (negated)
-    const b_d = theta.slice(na, na + nb); // discrete B polynomial
+    // Fallback initial guess if ARX failed or gave bad values
+    if (initDen.every(v => v === 0) || !isFinite(costFunction([...initDen, ...initNum]))) {
+        // Simple initial guess based on data characteristics
+        const yFinal = sid_y[N - 1];
+        const uVal = sid_u[0] || 1;
+        const K = yFinal / uVal;
+        // Estimate natural frequency from rise time
+        let tRise = sid_t[N - 1] / 4;
+        const y10 = 0.1 * yFinal, y90 = 0.9 * yFinal;
+        let t10 = 0, t90 = sid_t[N - 1];
+        for (let i = 0; i < N; i++) {
+            if (sid_y[i] >= y10 && t10 === 0) t10 = sid_t[i];
+            if (sid_y[i] >= y90) { t90 = sid_t[i]; break; }
+        }
+        tRise = Math.max(t90 - t10, Ts);
+        const wn = 1.8 / tRise;
+        const zeta = 0.7;
 
-    // Discrete TF: H(z) = B(z^-1) / A(z^-1) * z^-nk
-    // A(z^-1) = 1 + a1*z^-1 + a2*z^-2 + ...
-    // B(z^-1) = b1 + b2*z^-1 + ...
-
-    // Convert discrete to continuous using Tustin: s = (2/Ts)*(z-1)/(z+1) => z = (1+sTs/2)/(1-sTs/2)
-    // For display, compute continuous-domain Bode by evaluating H(e^(jwTs))
-    // But also compute continuous polynomial approximation via Tustin substitution
-
-    // Simulate discrete model for validation
-    const yHat = new Array(N).fill(0);
-    for (let k = 0; k < start; k++) yHat[k] = sid_y[k];
-    for (let k = start; k < N; k++) {
-        let val = 0;
-        for (let i = 0; i < na; i++) val -= a_d[i] * sid_y[k - 1 - i];
-        for (let i = 0; i < nb; i++) val += b_d[i] * (sid_u[k - nk - i] || 0);
-        yHat[k] = val;
+        if (np === 1) {
+            initDen = [wn];
+            initNum = [K * wn];
+        } else if (np === 2) {
+            initDen = [wn * wn, 2 * zeta * wn];
+            initNum = new Array(nz + 1).fill(0);
+            initNum[0] = K * wn * wn;
+        } else {
+            // Generic init for higher orders
+            for (let i = 0; i < np; i++) initDen[i] = Math.pow(wn, np - i);
+            initNum[0] = K * Math.pow(wn, np);
+        }
     }
 
-    // Convert to continuous-time TF using Tustin (bilinear)
-    // z = (1 + s*Ts/2) / (1 - s*Ts/2)
-    // Substitute into H(z) = B(z)/A(z) to get H(s) = Num(s)/Den(s)
-    const T2 = Ts / 2;
+    // Step 2: Nelder-Mead (simplex) optimization for Output-Error
+    // This is a derivative-free optimizer suitable for non-smooth, nonlinear problems
+    const nP = np + nz + 1; // total parameters
+    let best = [...initDen, ...initNum];
 
-    // Expand polynomial in z to polynomial in s via Tustin
-    // z^k = ((1+sT2)/(1-sT2))^k
-    // Multiply out: A(z) * (1-sT2)^n = sum of terms in s
-    function tustinPolyConvert(coeffs_z) {
-        // coeffs_z: [c0, c1, c2, ...] for c0 + c1*z^-1 + c2*z^-2 + ...
-        // = (c0*z^n + c1*z^(n-1) + ... + cn) / z^n
-        // Substitute z = (1+sT2)/(1-sT2)
-        // Numerator becomes: sum_k ck * (1+sT2)^(n-k) * (1-sT2)^k
-        const n = coeffs_z.length - 1;
-        const result = new Array(n + 1).fill(0); // coefficients of s^0, s^1, ..., s^n
+    function nelderMead(startParams, maxIter, tol) {
+        const n = startParams.length;
+        const alpha = 1.0, gamma = 2.0, rho = 0.5, sigma = 0.5;
 
-        for (let k = 0; k <= n; k++) {
-            // ck * (1+sT2)^(n-k) * (1-sT2)^k
-            // Expand using binomial
-            const p = n - k; // power of (1+sT2)
-            const q = k;     // power of (1-sT2)
+        // Initialize simplex
+        const simplex = [{ p: [...startParams], cost: costFunction(startParams) }];
+        for (let i = 0; i < n; i++) {
+            const pi = [...startParams];
+            pi[i] += Math.abs(pi[i]) * 0.1 + 0.01;
+            simplex.push({ p: pi, cost: costFunction(pi) });
+        }
 
-            // (1+sT2)^p = sum_i C(p,i) * (sT2)^i
-            // (1-sT2)^q = sum_j C(q,j) * (-sT2)^j
-            // Product: sum_{i,j} C(p,i)*C(q,j)*(-1)^j * T2^(i+j) * s^(i+j)
+        for (let iter = 0; iter < maxIter; iter++) {
+            simplex.sort((a, b) => a.cost - b.cost);
 
-            for (let i = 0; i <= p; i++) {
-                for (let j = 0; j <= q; j++) {
-                    const deg = i + j;
-                    if (deg > n) continue;
-                    const val = coeffs_z[k] * binomial(p, i) * binomial(q, j) * Math.pow(-1, j) * Math.pow(T2, deg);
-                    result[deg] += val;
+            // Check convergence
+            const spread = simplex[n].cost - simplex[0].cost;
+            if (spread < tol) break;
+
+            // Centroid (excluding worst)
+            const centroid = new Array(n).fill(0);
+            for (let i = 0; i < n; i++) {
+                for (let j = 0; j < n; j++) centroid[j] += simplex[i].p[j];
+                centroid.forEach((_, j) => { if (i === n - 1) centroid[j] /= n; });
+            }
+
+            // Reflection
+            const worst = simplex[n];
+            const xr = centroid.map((c, j) => c + alpha * (c - worst.p[j]));
+            const fr = costFunction(xr);
+
+            if (fr < simplex[0].cost) {
+                // Expansion
+                const xe = centroid.map((c, j) => c + gamma * (xr[j] - c));
+                const fe = costFunction(xe);
+                if (fe < fr) {
+                    simplex[n] = { p: xe, cost: fe };
+                } else {
+                    simplex[n] = { p: xr, cost: fr };
+                }
+            } else if (fr < simplex[n - 1].cost) {
+                simplex[n] = { p: xr, cost: fr };
+            } else {
+                // Contraction
+                const xc = centroid.map((c, j) => c + rho * (worst.p[j] - c));
+                const fc = costFunction(xc);
+                if (fc < worst.cost) {
+                    simplex[n] = { p: xc, cost: fc };
+                } else {
+                    // Shrink
+                    for (let i = 1; i <= n; i++) {
+                        for (let j = 0; j < n; j++) {
+                            simplex[i].p[j] = simplex[0].p[j] + sigma * (simplex[i].p[j] - simplex[0].p[j]);
+                        }
+                        simplex[i].cost = costFunction(simplex[i].p);
+                    }
                 }
             }
         }
-        return result; // [s^0, s^1, ..., s^n]
+        simplex.sort((a, b) => a.cost - b.cost);
+        return simplex[0].p;
     }
 
-    // A(z^-1) = 1 + a1*z^-1 + a2*z^-2 + ... => in z: z^n + a1*z^(n-1) + ...
-    const A_z = [1, ...a_d];
-    const B_z = [...b_d];
-    // Pad B to same length as A
-    while (B_z.length < A_z.length) B_z.push(0);
+    // Run Nelder-Mead in multiple rounds with restarts for robustness
+    best = nelderMead(best, 3000, 1e-15);
+    best = nelderMead(best, 3000, 1e-18);
+    best = nelderMead(best, 3000, 1e-20);
 
-    const den_s = tustinPolyConvert(A_z); // [s^0, s^1, ..., s^n]
-    const num_s = tustinPolyConvert(B_z);
+    // Levenberg-Marquardt refinement for final precision (numerical gradient)
+    function levenbergMarquardt(params, maxIter) {
+        const n = params.length;
+        let p = [...params];
+        let lambda = 1e-3;
+        let cost = costFunction(p);
 
-    // Normalize: make highest-degree den coeff = 1
-    const denHigh = den_s[np];
-    const num_norm = num_s.map(v => v / denHigh);
-    const den_norm = den_s.map(v => v / denHigh);
+        for (let iter = 0; iter < maxIter; iter++) {
+            // Compute numerical Jacobian and residuals
+            const eps = 1e-8;
+            const grad = new Array(n).fill(0);
+            const H = Array.from({ length: n }, () => new Array(n).fill(0));
 
-    // Build display strings: Num(s)/Den(s) in descending order
-    function polyStr(coeffs, varName) {
+            // Finite-difference gradient
+            for (let i = 0; i < n; i++) {
+                const pp = [...p]; pp[i] += eps;
+                const pm = [...p]; pm[i] -= eps;
+                grad[i] = (costFunction(pp) - costFunction(pm)) / (2 * eps);
+            }
+
+            // Approximate Hessian via outer product of gradient + BFGS-like
+            for (let i = 0; i < n; i++) {
+                for (let j = 0; j < n; j++) {
+                    const pp = [...p];
+                    pp[i] += eps; pp[j] += eps;
+                    const fpp = costFunction(pp);
+                    pp[i] -= 2 * eps;
+                    const fmp = costFunction(pp);
+                    pp[i] += 2 * eps; pp[j] -= 2 * eps;
+                    const fpm = costFunction(pp);
+                    pp[i] -= 2 * eps;
+                    const fmm = costFunction(pp);
+                    H[i][j] = (fpp - fpm - fmp + fmm) / (4 * eps * eps);
+                }
+            }
+
+            // (H + lambda*I) * delta = -grad
+            const A = H.map((row, i) => {
+                const r = [...row, -grad[i]];
+                r[i] += lambda;
+                return r;
+            });
+
+            // Gaussian elimination
+            let valid = true;
+            for (let col = 0; col < n; col++) {
+                let maxR = col;
+                for (let r = col + 1; r < n; r++) if (Math.abs(A[r][col]) > Math.abs(A[maxR][col])) maxR = r;
+                [A[col], A[maxR]] = [A[maxR], A[col]];
+                if (Math.abs(A[col][col]) < 1e-30) { valid = false; break; }
+                for (let r = col + 1; r < n; r++) {
+                    const f = A[r][col] / A[col][col];
+                    for (let c = col; c <= n; c++) A[r][c] -= f * A[col][c];
+                }
+            }
+
+            if (!valid) { lambda *= 10; continue; }
+
+            const delta = new Array(n);
+            for (let i = n - 1; i >= 0; i--) {
+                delta[i] = A[i][n];
+                for (let j = i + 1; j < n; j++) delta[i] -= A[i][j] * delta[j];
+                delta[i] /= A[i][i];
+            }
+
+            const pNew = p.map((v, i) => v + delta[i]);
+            const costNew = costFunction(pNew);
+
+            if (costNew < cost) {
+                p = pNew;
+                cost = costNew;
+                lambda *= 0.3;
+            } else {
+                lambda *= 10;
+            }
+
+            // Convergence check
+            const gradNorm = Math.sqrt(grad.reduce((s, g) => s + g * g, 0));
+            if (gradNorm < 1e-15) break;
+        }
+        return p;
+    }
+
+    best = levenbergMarquardt(best, 500);
+
+    // Extract final coefficients
+    const den_norm = [1]; // s^np coefficient = 1
+    const denCoeffs = best.slice(0, np);   // [a0, a1, ..., a_{np-1}]
+    const numCoeffs = best.slice(np, np + nz + 1); // [b0, ..., b_nz]
+
+    // Build polynomial arrays: [s^0, s^1, ..., s^np]
+    const den_poly = [...denCoeffs, 1]; // [a0, a1, ..., a_{np-1}, 1]
+    const num_poly = [...numCoeffs];     // [b0, b1, ..., b_nz]
+    // Pad num to same length as den for display
+    while (num_poly.length < den_poly.length) num_poly.push(0);
+
+    // Simulate final model for validation (free simulation)
+    const yHat = simulateTF(denCoeffs, numCoeffs, sid_u, sid_t, Ts);
+
+    // Build display strings
+    function polyStr(coeffs) {
         const n = coeffs.length - 1;
         let parts = [];
         for (let i = n; i >= 0; i--) {
@@ -5427,21 +5707,21 @@ function sidEstimateTFest() {
         return parts.join(' + ').replace(/\+ -/g, '- ');
     }
 
-    const numStr = polyStr(num_norm, 's');
-    const denStr = polyStr(den_norm, 's');
+    const numStr = polyStr(num_poly);
+    const denStr = polyStr(den_poly);
 
-    // Find poles and zeros of continuous model
-    // Den roots = poles, Num roots = zeros
-    const den_desc = [...den_norm].reverse(); // highest degree first
-    const num_desc = [...num_norm].reverse();
-    // Remove leading zeros from num
-    while (num_desc.length > 1 && Math.abs(num_desc[0]) < 1e-12) num_desc.shift();
+    // Find poles and zeros
+    const den_desc = [...den_poly].reverse();
+    const num_desc_raw = [...numCoeffs].reverse();
+    while (num_desc_raw.length > 1 && Math.abs(num_desc_raw[0]) < 1e-12) num_desc_raw.shift();
 
     const poles_c = solvePolyDK(den_desc);
-    const zeros_c = num_desc.length > 1 ? solvePolyDK(num_desc) : [];
+    const zeros_c = num_desc_raw.length > 1 ? solvePolyDK(num_desc_raw) : [];
 
-    // Store model for Bode drawing
-    sid_model = { type: 'tfest', num: num_norm, den: den_norm, np, nz, a_d, b_d, nk, Ts };
+    // Store discrete model for Bode (recompute from continuous)
+    // For Bode, evaluate G(jw) directly from continuous coefficients
+    sid_model = { type: 'tfest', num: num_poly, den: den_poly, np, nz, Ts,
+                  denCoeffs: denCoeffs, numCoeffs: numCoeffs };
 
     let modelStr = `G(s) = [ ${numStr} ] / [ ${denStr} ]`;
     modelStr += `<br><br><span style="font-size:12px;color:#78909c;">Equivalente MATLAB: tfest(data, ${np}, ${nz})</span>`;
@@ -5451,25 +5731,22 @@ function sidEstimateTFest() {
         { label: 'Num. Zeros', value: nz },
     ];
 
-    // Show poles
     poles_c.forEach((p, i) => {
         const pStr = Math.abs(p.im) < 1e-6 ? fmt(p.re, 4) : fmt(p.re, 4) + (p.im >= 0 ? '+' : '') + 'j' + fmt(p.im, 4);
         const stable = p.re < 0;
         params.push({ label: 'Polo ' + (i + 1), value: pStr + (stable ? ' (estavel)' : ' (instavel)') });
     });
 
-    // Show zeros
     zeros_c.forEach((z, i) => {
         const zStr = Math.abs(z.im) < 1e-6 ? fmt(z.re, 4) : fmt(z.re, 4) + (z.im >= 0 ? '+' : '') + 'j' + fmt(z.im, 4);
         params.push({ label: 'Zero ' + (i + 1), value: zStr });
     });
 
-    // Show continuous coefficients
-    for (let i = num_norm.length - 1; i >= 0; i--) {
-        if (Math.abs(num_norm[i]) > 1e-10) params.push({ label: 'b (s^' + i + ')', value: fmt(num_norm[i], 5) });
+    for (let i = num_poly.length - 1; i >= 0; i--) {
+        if (Math.abs(num_poly[i]) > 1e-10) params.push({ label: 'b (s^' + i + ')', value: fmt(num_poly[i], 5) });
     }
-    for (let i = den_norm.length - 1; i >= 0; i--) {
-        if (Math.abs(den_norm[i]) > 1e-10) params.push({ label: 'a (s^' + i + ')', value: fmt(den_norm[i], 5) });
+    for (let i = den_poly.length - 1; i >= 0; i--) {
+        if (Math.abs(den_poly[i]) > 1e-10) params.push({ label: 'a (s^' + i + ')', value: fmt(den_poly[i], 5) });
     }
 
     sidShowResult(modelStr, params, yHat);
