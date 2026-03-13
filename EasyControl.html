@@ -13,10 +13,12 @@
         .sidebar-header { padding: 20px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); }
         .sidebar-header h1 { font-size: 16px; color: #fff; letter-spacing: 1px; }
         .sidebar-header p { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 4px; }
-        .nav-item { padding: 12px 20px; cursor: pointer; border-left: 3px solid transparent; transition: all 0.2s; font-size: 13px; display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,0.7); }
+        .sidebar-logo { width: 80px; height: auto; cursor: pointer; margin-bottom: 0; display: block; margin-left: auto; margin-right: auto; }
+        .nav-item { padding: 12px 20px; cursor: pointer; border-left: 3px solid transparent; transition: all 0.2s; font-size: 13px; display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,0.7); white-space: nowrap; overflow: hidden; }
         .nav-item:hover { background: rgba(255,255,255,0.08); border-left-color: #e74c3c; color: #fff; }
         .nav-item.active { background: rgba(255,255,255,0.12); border-left-color: #e74c3c; color: #fff; }
-        .nav-icon { font-size: 16px; width: 22px; text-align: center; }
+        .nav-icon { font-size: 16px; width: 22px; text-align: center; flex-shrink: 0; }
+        .nav-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
         /* Main */
         .main { margin-left: 260px; flex: 1; padding: 30px; padding-top: 60px; max-width: 1100px; }
@@ -107,56 +109,172 @@
         .menu-toggle { display: none; position: fixed; top: 10px; left: 10px; z-index: 100; background: #1a2744; color: #fff; border: none; border-radius: 6px; width: 40px; height: 40px; font-size: 22px; cursor: pointer; line-height: 40px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
         .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 8; }
 
-        /* Canvas responsive */
-        canvas { max-width: 100%; height: auto !important; }
+        /* Canvas responsive — aspect-ratio preserves proportions on small screens */
+        canvas {
+            max-width: 100%;
+            height: auto !important;
+            aspect-ratio: attr(width) / attr(height);
+        }
+        /* Fallback for browsers that don't support attr() in aspect-ratio */
+        canvas[width="760"][height="340"] { aspect-ratio: 760/340; }
+        canvas[width="760"][height="300"] { aspect-ratio: 760/300; }
+        canvas[width="760"][height="260"] { aspect-ratio: 760/260; }
+        canvas[width="760"][height="320"] { aspect-ratio: 760/320; }
+        canvas[width="760"][height="220"] { aspect-ratio: 760/220; }
+        canvas[width="500"][height="400"] { aspect-ratio: 500/400; }
+        canvas[width="500"][height="450"] { aspect-ratio: 500/450; }
+        canvas[width="600"][height="500"] { aspect-ratio: 600/500; }
+        canvas[width="420"][height="420"] { aspect-ratio: 1; }
 
-        /* Responsive: Tablet (<=900px) */
-        @media (max-width: 900px) {
-            .sidebar { width: 60px; }
-            .sidebar .nav-text, .sidebar-header p, .sidebar-header h1 { display: none; }
-            .sidebar-header { padding: 12px; }
-            .nav-item { justify-content: center; padding: 14px 0; }
-            .nav-group-header { justify-content: center; padding: 14px 0; }
-            .nav-group-header .nav-text, .nav-group-header .nav-arrow { display: none; }
-            .nav-group-items .nav-item { padding-left: 0; }
-            .top-nav { left: 60px; }
-            .main { margin-left: 60px; padding: 16px; padding-top: 60px; }
-            .form-grid, .results-grid { grid-template-columns: 1fr; }
-            .results-grid.three { grid-template-columns: 1fr 1fr; }
-            .home-title { font-size: 32px; }
-            .home-logo { width: 140px; }
-            .home-cards { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
-            .ref-table { font-size: 11px; }
-            .ref-table th, .ref-table td { padding: 6px 5px; }
+        /* ================================================================
+           RESPONSIVE — TABLET HORIZONTAL  (900px – 1180px)
+           Sidebar at full 260px, main content adapts padding/max-width
+           ================================================================ */
+        @media (min-width: 901px) and (max-width: 1180px) {
+            .main { padding: 20px; padding-top: 58px; max-width: 100%; }
+            /* Inline multi-column grids (3-5 cols) become 2-col */
+            .form-grid { grid-template-columns: 1fr 1fr; }
+            .results-grid.three { grid-template-columns: 1fr 1fr 1fr; }
         }
 
-        /* Responsive: Mobile (<=600px) */
-        @media (max-width: 600px) {
+        /* ================================================================
+           RESPONSIVE — TABLET  (≤ 900px)
+           Sidebar becomes off-canvas drawer (hamburger), same as mobile
+           ================================================================ */
+        @media (max-width: 900px) {
+            /* ---- Sidebar drawer ---- */
             .menu-toggle { display: block; }
-            .sidebar { width: 260px; transform: translateX(-100%); transition: transform 0.3s ease; }
+            .sidebar { width: 260px; transform: translateX(-100%); transition: transform 0.3s ease; overflow: hidden; }
             .sidebar.open { transform: translateX(0); }
             .sidebar-overlay.open { display: block; }
-            .sidebar .nav-text, .sidebar-header p, .sidebar-header h1 { display: block; }
+            /* Restore full text display in drawer mode */
+            .sidebar .nav-text,
+            .sidebar-header p,
+            .sidebar-header h1 { display: block; position: static; opacity: 1; transform: none; background: none; box-shadow: none; border: none; padding: 0; font-size: inherit; color: inherit; pointer-events: auto; }
             .sidebar-header { padding: 20px; }
-            .nav-item { justify-content: flex-start; padding: 12px 20px; }
-            .nav-group-header { justify-content: flex-start; padding: 12px 20px; }
-            .nav-group-header .nav-text, .nav-group-header .nav-arrow { display: inline; }
+            .sidebar-logo { width: 70px; }
+            .nav-item { justify-content: flex-start; padding: 12px 20px; overflow: hidden; }
+            .nav-group-header { justify-content: flex-start; padding: 12px 20px; overflow: hidden; }
+            .nav-group-header .nav-text { display: block; }
+            .nav-group-header .nav-arrow { display: inline; }
             .nav-group-items .nav-item { padding-left: 36px; }
+
+            /* ---- Top bar / Main ---- */
             .top-nav { left: 0; }
-            .main { margin-left: 0; padding: 12px; padding-top: 56px; max-width: 100%; }
+            .main { margin-left: 0; padding: 16px; padding-top: 60px; max-width: 100%; }
+
+            /* ---- Typography ---- */
+            .page-title { font-size: 19px; }
+            .page-desc  { font-size: 12px; margin-bottom: 18px; }
+            .section    { padding: 16px; margin-bottom: 16px; }
+
+            /* ---- Grids ---- */
+            /* Named form/results grids → single column */
+            .form-grid { grid-template-columns: 1fr; }
+            .results-grid { grid-template-columns: 1fr 1fr; }
+            .results-grid.three { grid-template-columns: 1fr 1fr; }
+
+            /* Inline grids injected via style="grid-template-columns:repeat(N,1fr)"
+               are overridden with a tablet-friendly max of 2 columns              */
+            .section [style*="grid-template-columns: repeat(3"],
+            .section [style*="grid-template-columns: repeat(4"],
+            .section [style*="grid-template-columns: repeat(5"] {
+                grid-template-columns: repeat(2, 1fr) !important;
+            }
+            .section [style*="grid-template-columns: 1fr 1fr 1fr 1fr"] {
+                grid-template-columns: 1fr 1fr !important;
+            }
+
+            /* Inline fixed-width inputs — let them fill available space */
+            .section input[style*="width:60px"],
+            .section input[style*="width:70px"],
+            .section input[style*="width:80px"],
+            .section input[style*="width:100px"] {
+                width: 100% !important;
+                min-width: 0 !important;
+            }
+
+            /* Inline flex rows that contain those inputs */
+            .section [style*="display:flex"][style*="gap:8px"] {
+                flex-wrap: wrap;
+            }
+
+            /* ---- Results cards ---- */
+            .result-card .value { font-size: 16px; }
+
+            /* ---- Buttons ---- */
+            .btn-row { flex-wrap: wrap; }
+            .btn { padding: 10px 18px; font-size: 12px; }
+
+            /* ---- Tables ---- */
+            .ref-table { font-size: 11px; }
+            .ref-table th,
+            .ref-table td { padding: 6px 5px; }
+
+            /* ---- Home page ---- */
+            .home-title { font-size: 32px; }
+            .home-logo  { width: 140px; }
+            .home-cards { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+        }
+
+        /* ================================================================
+           RESPONSIVE — MOBILE  (≤ 600px)
+           Tighter spacing overrides on top of the tablet drawer styles
+           ================================================================ */
+        @media (max-width: 600px) {
+            /* ---- Top bar / Main (tighter on mobile) ---- */
+            .main { padding: 12px; padding-top: 56px; }
+
+            /* ---- Typography ---- */
             .page-title { font-size: 18px; }
-            .page-desc { font-size: 11px; }
-            .section { padding: 14px; margin-bottom: 14px; }
-            .form-grid, .results-grid, .results-grid.three { grid-template-columns: 1fr; }
+            .page-desc  { font-size: 11px; }
+            .section    { padding: 14px; margin-bottom: 14px; }
+
+            /* ---- Grids ---- */
+            .form-grid,
+            .results-grid,
+            .results-grid.three { grid-template-columns: 1fr; }
+
+            /* All inline multi-column grids → single column on mobile */
+            .section [style*="grid-template-columns: repeat("],
+            .section [style*="grid-template-columns: 1fr 1fr 1fr 1fr"],
+            .section [style*="grid-template-columns: 1fr 1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+            }
+
+            /* Fixed-width inputs → full width */
+            .section input[style*="width:60px"],
+            .section input[style*="width:70px"],
+            .section input[style*="width:80px"],
+            .section input[style*="width:100px"] {
+                width: 100% !important;
+                min-width: 0 !important;
+            }
+
+            /* ---- Results ---- */
             .result-card .value { font-size: 15px; }
-            .home-title { font-size: 26px; }
-            .home-subtitle { font-size: 13px; }
-            .home-logo { width: 120px; }
-            .home-cards { grid-template-columns: 1fr; }
+
+            /* ---- Buttons ---- */
             .btn { padding: 10px 16px; font-size: 12px; }
             .btn-row { flex-wrap: wrap; }
+
+            /* ---- Home ---- */
+            .home-title    { font-size: 26px; }
+            .home-subtitle { font-size: 13px; }
+            .home-logo     { width: 120px; }
+            .home-cards    { grid-template-columns: 1fr; }
+
+            /* ---- Tables ---- */
             .ref-table { font-size: 10px; display: block; overflow-x: auto; white-space: nowrap; }
+
+            /* ---- Misc ---- */
             textarea { font-size: 11px !important; }
+        }
+
+        /* Touch-friendly: larger tap targets on small screens */
+        @media (max-width: 900px) {
+            .nav-item { min-height: 48px; }
+            canvas { touch-action: pan-y; }
         }
 
         /* Home page */
@@ -196,9 +314,9 @@
         .top-nav-breadcrumb { margin-left: 8px; font-size: 13px; color: #7f8c8d; }
 
         /* Sidebar group (collapsible) */
-        .nav-group-header { padding: 12px 20px; cursor: pointer; border-left: 3px solid transparent; transition: all 0.2s; font-size: 13px; display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,0.7); user-select: none; }
+        .nav-group-header { padding: 12px 20px; cursor: pointer; border-left: 3px solid transparent; transition: all 0.2s; font-size: 13px; display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,0.7); user-select: none; white-space: nowrap; overflow: hidden; }
         .nav-group-header:hover { background: rgba(255,255,255,0.08); border-left-color: #e74c3c; color: #fff; }
-        .nav-group-header .nav-arrow { font-size: 10px; margin-left: auto; transition: transform 0.2s; }
+        .nav-group-header .nav-arrow { font-size: 10px; margin-left: auto; transition: transform 0.2s; flex-shrink: 0; }
         .nav-group-header.open .nav-arrow { transform: rotate(90deg); }
         .nav-group-items { display: none; }
         .nav-group-items.open { display: block; }
@@ -212,6 +330,60 @@
         .combo-card .inputs { font-weight: 700; color: #e67e22; font-size: 14px; min-width: 120px; }
         .combo-card .outputs { font-size: 12px; color: #5a6a7a; flex: 1; }
         .combo-card .step { font-size: 11px; color: #2980b9; background: #ebf5fb; padding: 3px 8px; border-radius: 4px; }
+        /* ---- Interactive canvas tooltip ---- */
+        #canvas-tooltip {
+            position: fixed; pointer-events: none; z-index: 9999;
+            background: rgba(26,35,50,0.92); color: #fff;
+            padding: 7px 11px; border-radius: 7px; font: 12px 'Segoe UI', sans-serif;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.1);
+            white-space: nowrap; transition: opacity 0.1s; opacity: 0;
+            line-height: 1.6;
+        }
+        #canvas-tooltip.visible { opacity: 1; }
+        #canvas-tooltip b { color: #7ec8f7; }
+        canvas[data-interactive] { cursor: crosshair; }
+        /* Zoom wrapper for interactive canvases */
+        .canvas-zoom-wrap {
+            position: relative; overflow: hidden; display: inline-block;
+            width: 100%; max-width: inherit; border-radius: 6px;
+        }
+        .canvas-zoom-wrap canvas { display: block; transform-origin: 0 0; }
+        .canvas-zoom-controls {
+            position: absolute; top: 6px; right: 6px;
+            display: grid;
+            grid-template-columns: 26px 26px 26px;
+            grid-template-rows: 26px 26px 26px;
+            grid-template-areas:
+                "zin  up   zout"
+                "left reset right"
+                "fs   down clear";
+            gap: 3px; z-index: 5;
+            opacity: 0; transition: opacity 0.2s;
+        }
+        .canvas-zoom-wrap:hover .canvas-zoom-controls { opacity: 1; }
+        .canvas-zoom-btn {
+            width: 26px; height: 26px; border: none; border-radius: 5px;
+            background: rgba(26,39,68,0.82); color: #fff; font-size: 15px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            line-height: 1; font-weight: 700; box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+        }
+        .canvas-zoom-btn:hover { background: rgba(41,128,185,0.9); }
+        .canvas-zoom-btn[data-action="in"]    { grid-area: zin; }
+        .canvas-zoom-btn[data-action="out"]   { grid-area: zout; }
+        .canvas-zoom-btn[data-action="up"]    { grid-area: up; }
+        .canvas-zoom-btn[data-action="down"]  { grid-area: down; }
+        .canvas-zoom-btn[data-action="left"]  { grid-area: left; }
+        .canvas-zoom-btn[data-action="right"] { grid-area: right; }
+        .canvas-zoom-btn[data-action="reset"] { grid-area: reset; }
+        .canvas-zoom-btn[data-action="fullscreen"]   { grid-area: fs; }
+        .canvas-zoom-btn[data-action="clearmarkers"] { grid-area: clear; }
+        .canvas-zoom-wrap:fullscreen {
+            background: #0a0f1e; display: flex; align-items: center; justify-content: center;
+        }
+        .canvas-zoom-wrap:fullscreen canvas {
+            max-width: 100vw; max-height: 100vh; width: auto; height: auto;
+        }
+        .canvas-zoom-wrap:fullscreen .canvas-zoom-controls { opacity: 1; top: 12px; right: 12px; }
         @keyframes sid-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes sid-pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
         .sid-loading-overlay {
@@ -228,19 +400,56 @@
     </style>
 </head>
 <body>
+<div id="canvas-tooltip"></div>
 
 <!-- Top navigation bar -->
+<!-- Tela de Identificação -->
+<div id="loginOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(10,15,30,0.92);
+    display:flex;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:14px;padding:36px 32px 28px;max-width:400px;width:90%;
+        box-shadow:0 20px 60px rgba(0,0,0,0.4);text-align:center;">
+        <div style="font-size:28px;font-weight:800;color:#1a2744;margin-bottom:4px;">EasyControl</div>
+        <div style="font-size:12px;color:#7f8c8d;margin-bottom:24px;">Identifique-se para gerar seus relatorios</div>
+        <div style="text-align:left;margin-bottom:14px;">
+            <label style="font-size:12px;font-weight:600;color:#2c3e50;display:block;margin-bottom:4px;">Nome completo</label>
+            <input id="loginNome" type="text" placeholder="Seu nome completo"
+                style="width:100%;padding:10px 12px;border:1px solid #d0d5dd;border-radius:8px;font-size:14px;outline:none;transition:border 0.2s;"
+                onfocus="this.style.borderColor='#2980b9'" onblur="this.style.borderColor='#d0d5dd'">
+        </div>
+        <div style="text-align:left;margin-bottom:20px;">
+            <label style="font-size:12px;font-weight:600;color:#2c3e50;display:block;margin-bottom:4px;">CPF <span style="font-weight:400;color:#b0b8c4;">(opcional)</span></label>
+            <input id="loginCpf" type="text" placeholder="000.000.000-00" maxlength="14"
+                style="width:100%;padding:10px 12px;border:1px solid #d0d5dd;border-radius:8px;font-size:14px;outline:none;transition:border 0.2s;"
+                onfocus="this.style.borderColor='#2980b9'" onblur="this.style.borderColor='#d0d5dd'"
+                oninput="this.value=this.value.replace(/\D/g,'').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2')"
+                onkeydown="if(event.key==='Enter')confirmarLogin()">
+        </div>
+        <button onclick="confirmarLogin()" style="width:100%;padding:12px;background:linear-gradient(135deg,#1a2744,#2980b9);
+            color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;
+            box-shadow:0 4px 12px rgba(41,128,185,0.3);transition:transform 0.15s;"
+            onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+            Entrar
+        </button>
+        <div style="margin-top:16px;font-size:10px;color:#95a5a6;line-height:1.6;">
+            Seus dados nao sao salvos em nenhum servidor.<br>
+            Ao atualizar a pagina, todas as informacoes serao apagadas.
+        </div>
+    </div>
+</div>
+
 <div class="top-nav" id="topNav">
     <button class="top-nav-btn" onclick="goBack()" title="Voltar">&#8592;</button>
     <button class="top-nav-btn" onclick="showPage('home')" title="Home">&#8962;</button>
     <span class="top-nav-breadcrumb" id="breadcrumb"></span>
+    <span id="userGreeting" style="margin-left:auto;font-size:12px;color:#7f8c8d;cursor:pointer;"
+        onclick="editarUsuario()" title="Clique para editar seus dados"></span>
 </div>
 
 <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
 <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
 <nav class="sidebar">
     <div class="sidebar-header">
-        <img src="data:image/png;base64,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" alt="EasyControl" style="cursor:pointer;width:80px;height:auto;margin-bottom:0;" onclick="showPage('home')">
+        <img src="data:image/png;base64,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" alt="EasyControl" class="sidebar-logo" onclick="showPage('home')">
     </div>
     <div class="nav-item active" onclick="showPage('home')"><span class="nav-icon">&#8962;</span><span class="nav-text">Home</span></div>
 
@@ -403,12 +612,12 @@
 
     <div class="section">
         <div class="section-title">Resposta ao Degrau Unitario — c(t) = K·(1 - e^(-t/τ))</div>
-        <canvas id="canvas_step1" width="760" height="340" style="width:100%;max-width:760px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
+        <canvas id="canvas_step1" width="960" height="420" style="width:100%;max-width:960px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
     </div>
 
     <div class="section">
         <div class="section-title">Plano s — Polo do Sistema</div>
-        <canvas id="canvas_splane1" width="500" height="400" style="width:100%;max-width:500px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
+        <canvas id="canvas_splane1" width="620" height="520" style="width:100%;max-width:620px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
     </div>
 </div>
 
@@ -526,12 +735,12 @@
 
     <div class="section">
         <div class="section-title">Resposta ao Degrau Unitario — c(t)</div>
-        <canvas id="canvas_step" width="760" height="340" style="width:100%;max-width:760px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
+        <canvas id="canvas_step" width="960" height="420" style="width:100%;max-width:960px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
     </div>
 
     <div class="section">
         <div class="section-title">Plano s — Polos do Sistema</div>
-        <canvas id="canvas_splane" width="500" height="400" style="width:100%;max-width:500px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
+        <canvas id="canvas_splane" width="620" height="520" style="width:100%;max-width:620px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
     </div>
 </div>
 
@@ -631,12 +840,12 @@
 
     <div class="section">
         <div class="section-title">Resposta ao Degrau</div>
-        <canvas id="canvas_step3" width="760" height="340" style="width:100%;max-width:760px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
+        <canvas id="canvas_step3" width="960" height="420" style="width:100%;max-width:960px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
     </div>
 
     <div class="section">
         <div class="section-title">Plano s — Polos</div>
-        <canvas id="canvas_splane3" width="500" height="400" style="width:100%;max-width:500px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
+        <canvas id="canvas_splane3" width="620" height="520" style="width:100%;max-width:620px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
     </div>
 </div>
 
@@ -739,12 +948,12 @@
 
     <div class="section">
         <div class="section-title">Resposta ao Degrau</div>
-        <canvas id="canvas_step4" width="760" height="340" style="width:100%;max-width:760px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
+        <canvas id="canvas_step4" width="960" height="420" style="width:100%;max-width:960px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
     </div>
 
     <div class="section">
         <div class="section-title">Plano s — Polos</div>
-        <canvas id="canvas_splane4" width="500" height="400" style="width:100%;max-width:500px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
+        <canvas id="canvas_splane4" width="620" height="520" style="width:100%;max-width:620px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
     </div>
 </div>
 
@@ -839,7 +1048,7 @@
 
     <div class="section">
         <div class="section-title">Resposta ao Degrau — Visualizacao do Erro</div>
-        <canvas id="canvas_erro" width="760" height="300" style="width:100%;max-width:760px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
+        <canvas id="canvas_erro" width="960" height="380" style="width:100%;max-width:960px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
     </div>
 </div>
 
@@ -882,7 +1091,7 @@
 
     <div class="section">
         <div class="section-title">Plano s — Raizes do Polinomio</div>
-        <canvas id="canvas_routh_roots" width="500" height="400" style="width:100%;max-width:500px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
+        <canvas id="canvas_routh_roots" width="620" height="520" style="width:100%;max-width:620px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
     </div>
 </div>
 
@@ -947,8 +1156,8 @@
 
     <div class="section">
         <div class="section-title">Diagrama de Bode — Sistema 2a Ordem (insira zeta e wn na aba 2a Ordem)</div>
-        <canvas id="canvas_bode_mag" width="760" height="260" style="width:100%;max-width:760px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;margin-bottom:10px;"></canvas>
-        <canvas id="canvas_bode_phase" width="760" height="260" style="width:100%;max-width:760px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
+        <canvas id="canvas_bode_mag" width="960" height="340" style="width:100%;max-width:960px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;margin-bottom:10px;"></canvas>
+        <canvas id="canvas_bode_phase" width="960" height="340" style="width:100%;max-width:960px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
     </div>
 
     <div class="section">
@@ -1115,7 +1324,7 @@
 
     <div class="section">
         <div class="section-title">Plano s — Autovalores de A</div>
-        <canvas id="canvas_ss_eigen" width="500" height="400" style="width:100%;max-width:500px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
+        <canvas id="canvas_ss_eigen" width="620" height="520" style="width:100%;max-width:620px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
     </div>
 </div>
 
@@ -1186,7 +1395,7 @@
 
     <div class="section">
         <div class="section-title">Visualizacao das Assintotas</div>
-        <canvas id="canvas_rlocus" width="500" height="450" style="width:100%;max-width:500px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
+        <canvas id="canvas_rlocus" width="620" height="560" style="width:100%;max-width:620px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
     </div>
 
     <div class="section">
@@ -1213,7 +1422,7 @@
                 <input type="number" step="any" id="rl_kmax" value="100" oninput="dCalcFullRL()">
             </div>
         </div>
-        <canvas id="canvas_fullrlocus" width="600" height="500" style="width:100%;max-width:600px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:10px auto 0;"></canvas>
+        <canvas id="canvas_fullrlocus" width="760" height="620" style="width:100%;max-width:760px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:10px auto 0;"></canvas>
     </div>
 </div>
 
@@ -1363,7 +1572,7 @@
 
     <div class="section">
         <div class="section-title">Plano z — Polo Mapeado</div>
-        <canvas id="canvas_zplane" width="420" height="420" style="width:100%;max-width:420px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
+        <canvas id="canvas_zplane" width="560" height="560" style="width:100%;max-width:560px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;display:block;margin:0 auto;"></canvas>
     </div>
 
     <div class="section">
@@ -1425,7 +1634,7 @@
 
     <div class="section">
         <div class="section-title">2. Dados Importados</div>
-        <canvas id="canvas_sid_data" width="760" height="300" style="width:100%;max-width:760px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
+        <canvas id="canvas_sid_data" width="960" height="380" style="width:100%;max-width:960px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
     </div>
 
     <div class="section">
@@ -1485,19 +1694,19 @@
 
     <div class="section">
         <div class="section-title">5. Validacao — Medido vs. Estimado</div>
-        <canvas id="canvas_sid_compare" width="760" height="320" style="width:100%;max-width:760px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
+        <canvas id="canvas_sid_compare" width="960" height="400" style="width:100%;max-width:960px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
         <div id="sid_fit_info" style="margin-top:8px;font-size:13px;color:#5a6a7a;"></div>
     </div>
 
     <div class="section">
         <div class="section-title">6. Residuos</div>
-        <canvas id="canvas_sid_resid" width="760" height="220" style="width:100%;max-width:760px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
+        <canvas id="canvas_sid_resid" width="960" height="300" style="width:100%;max-width:960px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
     </div>
 
     <div class="section">
         <div class="section-title">7. Resposta em Frequencia (Bode do modelo estimado)</div>
-        <canvas id="canvas_sid_bode_mag" width="760" height="220" style="width:100%;max-width:760px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;margin-bottom:8px;"></canvas>
-        <canvas id="canvas_sid_bode_phase" width="760" height="220" style="width:100%;max-width:760px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
+        <canvas id="canvas_sid_bode_mag" width="960" height="300" style="width:100%;max-width:960px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;margin-bottom:8px;"></canvas>
+        <canvas id="canvas_sid_bode_phase" width="960" height="300" style="width:100%;max-width:960px;background:#fafbfd;border:1px solid #e0e4e8;border-radius:6px;"></canvas>
     </div>
 </div>
 
@@ -2001,6 +2210,52 @@ const fmt = (v, d=4) => {
     return parseFloat(v.toFixed(d));
 };
 
+// ===================== IDENTIFICAÇÃO DO USUÁRIO =====================
+// Dados ficam apenas em memória — ao atualizar a página, são apagados.
+let _ecNome = '';
+let _ecCpf  = '';
+
+function initLogin() {
+    const overlay = document.getElementById('loginOverlay');
+    overlay.style.display = 'flex';
+}
+
+function confirmarLogin() {
+    const nome = document.getElementById('loginNome').value.trim();
+    const cpf  = document.getElementById('loginCpf').value.trim();
+    if (!nome) { document.getElementById('loginNome').focus(); return; }
+    _ecNome = nome;
+    _ecCpf  = cpf;
+    document.getElementById('loginOverlay').style.display = 'none';
+    atualizarSaudacao();
+}
+
+function atualizarSaudacao() {
+    const el = document.getElementById('userGreeting');
+    if (el && _ecNome) {
+        const primeiro = _ecNome.split(' ')[0];
+        el.textContent = 'Ola, ' + primeiro;
+    }
+}
+
+function editarUsuario() {
+    const overlay = document.getElementById('loginOverlay');
+    document.getElementById('loginNome').value = _ecNome;
+    document.getElementById('loginCpf').value  = _ecCpf;
+    overlay.style.display = 'flex';
+}
+
+function getUsuarioInfo() {
+    return { nome: _ecNome, cpf: _ecCpf };
+}
+
+// Init login on page load
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initLogin);
+} else {
+    initLogin();
+}
+
 // Debounce: atrasa execução até o usuário parar de digitar
 const _debounceTimers = {};
 function debounce(fn, delay) {
@@ -2405,6 +2660,15 @@ function draw1stepResponse(K, tau, ts2, tr) {
 
     ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
     ctx.fillText('Tempo (s)', pad.l + pw / 2, h - 4);
+
+    registerCanvasTooltip('canvas_step1', {
+        type: 'xy', pad, xMin: 0, xMax: tMax, yMin: 0, yMax: yMax,
+        xLabel: 't', xUnit: 's', yLabel: 'c(t)',
+        getData: function(tVal) {
+            const ct = K * (1 - Math.exp(-tVal / tau));
+            return [{ label: 'c(t)', value: fmt(ct, 4), color: '#7ec8f7' }];
+        }
+    });
 }
 
 function clearInputs1ordem() {
@@ -3026,7 +3290,7 @@ function gerarRelatorio(pageId, formato) {
     const css = `
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:'Segoe UI',Tahoma,sans-serif;max-width:780px;margin:0 auto;padding:14px 20px;color:#2c3e50;background:#fff;font-size:9px;line-height:1.35}
-        .header{display:flex;align-items:baseline;justify-content:space-between;border-bottom:2px solid #1a2744;padding-bottom:6px;margin-bottom:10px}
+        .header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #1a2744;padding-bottom:6px;margin-bottom:10px}
         .header h1{font-size:15px;color:#1a2744;font-weight:700}
         .header .meta{font-size:8px;color:#95a5a6}
         .section{margin-bottom:8px;break-inside:avoid}
@@ -3049,8 +3313,14 @@ function gerarRelatorio(pageId, formato) {
         @media print{body{padding:10px 14px}h2{background:#1a2744!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.results-grid,.r-card,tr:nth-child(even){-webkit-print-color-adjust:exact;print-color-adjust:exact}.chart img{max-width:420px}.section{break-inside:avoid}}
     `;
 
+    const logoBase64 = document.querySelector('.sidebar-logo') ? document.querySelector('.sidebar-logo').src : '';
+
     const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>' + _escHtml(titulo) + '</title><style>' + css + '</style></head><body>' +
-        '<div class="header"><h1>' + _escHtml(titulo) + '</h1><div class="meta">' + _escHtml(dataStr) + '</div></div>' +
+        '<div class="header"><div style="display:flex;align-items:center;gap:10px;flex:1"><img src="' + logoBase64 + '" alt="EasyControl" style="height:36px;width:auto">' +
+        '<h1>' + _escHtml(titulo) + '</h1></div><div class="meta">' + _escHtml(dataStr) +
+        (getUsuarioInfo().nome ? '<br><strong>Aluno:</strong> ' + _escHtml(getUsuarioInfo().nome) : '') +
+        (getUsuarioInfo().cpf ? ' &nbsp;|&nbsp; <strong>CPF:</strong> ' + _escHtml(getUsuarioInfo().cpf) : '') +
+        '</div></div>' +
         bodyHtml +
         '<div class="footer">Controle F\u00e1cil \u2014 POLI / UPE</div>' +
         '</body></html>';
@@ -3182,6 +3452,17 @@ function drawHighOrderStep(canvasId, poles, K) {
     ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
     ctx.fillText('Tempo (s)', pad.l + pw / 2, h - 4);
     ctx.fillText('Resposta ao degrau — ' + n + 'a ordem', pad.l + pw / 2, pad.t - 8);
+
+    const _yMin = Math.min(...yArr), _yMax = Math.max(...yArr, K) * 1.2;
+    registerCanvasTooltip(canvasId, {
+        type: 'xy', pad, xMin: 0, xMax: tMax, yMin: _yMin, yMax: _yMax,
+        xLabel: 't', xUnit: 's', yLabel: 'c(t)',
+        getData: function(tVal) {
+            const idx = Math.round(tVal / dt);
+            const ct = yArr[Math.max(0, Math.min(idx, yArr.length - 1))];
+            return [{ label: 'c(t)', value: fmt(ct, 4), color: '#7ec8f7' }];
+        }
+    });
 }
 
 // ===================== COMBINAÇÕES =====================
@@ -3493,13 +3774,520 @@ const C = {
 };
 
 // Helpers
+// Initialize a canvas for HiDPI/Retina rendering.
+// Sets canvas pixel dimensions to CSS size × devicePixelRatio and scales ctx.
+function _initHiDPI(cv) {
+    const dpr = window.devicePixelRatio || 1;
+    if (cv._hiDpiDpr === dpr) return; // already initialized at this dpr
+    cv._hiDpiDpr = dpr;
+    // CSS logical size comes from the width/height attributes set in HTML
+    const cssW = cv._cssW || cv.width;
+    const cssH = cv._cssH || cv.height;
+    cv._cssW = cssW;
+    cv._cssH = cssH;
+    cv.width  = Math.round(cssW * dpr);
+    cv.height = Math.round(cssH * dpr);
+    cv.style.width  = cssW + 'px';
+    cv.style.height = cssH + 'px';
+}
+
 function getCtx(id) {
     const cv = document.getElementById(id);
     if (!cv) return null;
+    _initHiDPI(cv);
+    const dpr = cv._hiDpiDpr || 1;
     const ctx = cv.getContext('2d');
-    ctx.clearRect(0, 0, cv.width, cv.height);
-    return { ctx, w: cv.width, h: cv.height };
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // reset to dpr scale
+    ctx.clearRect(0, 0, cv._cssW || cv.width, cv._cssH || cv.height);
+    // Schedule marker redraw after the current draw function finishes
+    _scheduleMarkerRedraw(id);
+    // Return logical CSS dimensions so all drawing code is unchanged
+    return { ctx, w: cv._cssW || cv.width / dpr, h: cv._cssH || cv.height / dpr };
 }
+
+// ===================== INTERACTIVE CANVAS TOOLTIP ENGINE =====================
+// Each canvas registers a config describing how to convert pixel coords to values.
+// config = {
+//   type: 'xy' | 'bode' | 'splane' | 'discrete',
+//   pad: {l,r,t,b},
+//   xMin, xMax, yMin, yMax,   // for type 'xy'
+//   logXMin, logXMax,          // for type 'bode' (log10)
+//   cx, cy, scale,             // for type 'splane' / 'discrete'
+//   xLabel, yLabel, xUnit, yUnit,
+//   xLog: bool,
+//   extraLines: [{x, label}] or [{y, label}]  // optional crosshair snapping
+//   getData: fn(xVal) -> [{label, value, color}]  // optional data lookup
+// }
+const _canvasTooltipRegistry = {};
+const _canvasZoomState = {}; // { id: { zoom, panX, panY } }
+const _canvasMarkers = {}; // { id: [ { px, py, dataX, dataY, label, color, lineType } ] }
+// lineType: 'both' = point + crosshairs, 'h' = horizontal line only, 'v' = vertical line only
+const MARKER_COLORS = [
+    '#FF4081','#00BCD4','#FFEB3B','#76FF03','#FF6D00',
+    '#E040FB','#00E5FF','#FFD740','#69F0AE','#FF3D00',
+    '#7C4DFF','#18FFFF','#EEFF41','#B2FF59','#FF9100'
+];
+
+// Convert data coordinates to pixel coordinates using current config
+function _markerDataToPx(cfg, cv, dataX, dataY) {
+    const pad = cfg.pad || { l: 60, r: 20, t: 30, b: 40 };
+    const W = cv._cssW || cv.width;
+    const H = cv._cssH || cv.height;
+    const pw = W - pad.l - pad.r;
+    const ph = H - pad.t - pad.b;
+    let px, py;
+    if (cfg.type === 'xy') {
+        px = pad.l + ((dataX - cfg.xMin) / (cfg.xMax - cfg.xMin)) * pw;
+        py = pad.t + (1 - (dataY - cfg.yMin) / (cfg.yMax - cfg.yMin)) * ph;
+    } else if (cfg.type === 'bode') {
+        px = pad.l + ((dataX - cfg.logXMin) / (cfg.logXMax - cfg.logXMin)) * pw;
+        py = pad.t + (1 - (dataY - cfg.yMin) / (cfg.yMax - cfg.yMin)) * ph;
+    } else if (cfg.type === 'splane' || cfg.type === 'discrete') {
+        px = cfg.cx + dataX * cfg.scale;
+        py = cfg.cy - dataY * cfg.scale;
+    }
+    return { px, py };
+}
+
+// Draw all markers for a canvas (call after drawing chart content)
+function _drawCanvasMarkers(id) {
+    const markers = _canvasMarkers[id];
+    if (!markers || markers.length === 0) return;
+    const cv = document.getElementById(id);
+    if (!cv) return;
+    const ctx = cv.getContext('2d');
+    const cfg = _canvasTooltipRegistry[id];
+    const dpr = cv._hiDpiDpr || 1;
+    const W = cv._cssW || cv.width / dpr;
+    const H = cv._cssH || cv.height / dpr;
+    const pad = cfg ? (cfg.pad || { l: 60, r: 20, t: 30, b: 40 }) : { l: 60, r: 20, t: 30, b: 40 };
+    const plotL = pad.l, plotR = W - pad.r;
+    const plotT = pad.t, plotB = H - pad.b;
+    // Ensure context is at DPR scale for correct drawing
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    markers.forEach(function(m) {
+        // Recalculate pixel position from data coords if config available
+        let px = m.px, py = m.py;
+        if (cfg) {
+            const p = _markerDataToPx(cfg, cv, m.dataX, m.dataY);
+            px = p.px; py = p.py;
+            m.px = px; m.py = py;
+        }
+
+        const lt = m.lineType || 'both';
+
+        // Draw crosshair lines
+        ctx.save();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = m.color;
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.6;
+        if (lt === 'v' || lt === 'both') {
+            ctx.beginPath();
+            ctx.moveTo(px, plotT);
+            ctx.lineTo(px, plotB);
+            ctx.stroke();
+        }
+        if (lt === 'h' || lt === 'both') {
+            ctx.beginPath();
+            ctx.moveTo(plotL, py);
+            ctx.lineTo(plotR, py);
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        // Axis value labels on the edges
+        ctx.font = 'bold 9px monospace';
+        let xValStr, yValStr;
+        if (cfg && cfg.type === 'bode') {
+            xValStr = fmt(Math.pow(10, m.dataX), 3);
+            yValStr = fmt(m.dataY, 3);
+        } else {
+            xValStr = fmt(m.dataX, 3);
+            yValStr = fmt(m.dataY, 3);
+        }
+        // X value at bottom edge (for vertical or both)
+        if (lt === 'v' || lt === 'both') {
+            const xTw = ctx.measureText(xValStr).width;
+            ctx.fillStyle = 'rgba(10,15,30,0.85)';
+            ctx.fillRect(px - xTw / 2 - 2, plotB + 1, xTw + 4, 12);
+            ctx.fillStyle = m.color;
+            ctx.fillText(xValStr, px - xTw / 2, plotB + 11);
+        }
+        // Y value at left edge (for horizontal or both)
+        if (lt === 'h' || lt === 'both') {
+            const yTw = ctx.measureText(yValStr).width;
+            ctx.fillStyle = 'rgba(10,15,30,0.85)';
+            ctx.fillRect(plotL - yTw - 6, py - 5, yTw + 4, 12);
+            ctx.fillStyle = m.color;
+            ctx.fillText(yValStr, plotL - yTw - 4, py + 5);
+        }
+
+        // Filled circle marker (for 'both' type, or small dot for line-only)
+        if (lt === 'both') {
+            ctx.beginPath();
+            ctx.arc(px, py, 6, 0, 2 * Math.PI);
+            ctx.fillStyle = m.color;
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            // Coordinate label near marker
+            ctx.font = 'bold 10px monospace';
+            const lbl = m.label;
+            const tw = ctx.measureText(lbl).width;
+            const lx = px + 9;
+            const ly = py - 9;
+            ctx.fillStyle = 'rgba(10,15,30,0.8)';
+            ctx.fillRect(lx - 2, ly - 10, tw + 4, 13);
+            ctx.fillStyle = m.color;
+            ctx.fillText(lbl, lx, ly);
+        } else {
+            // Small indicator dot for line-only markers
+            ctx.beginPath();
+            ctx.arc(px, py, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = m.color;
+            ctx.fill();
+        }
+    });
+}
+
+const _canvasSnapshots = {}; // { id: ImageData } — snapshot before markers
+
+// Schedule marker redraw after current drawing cycle completes
+function _scheduleMarkerRedraw(id) {
+    cancelAnimationFrame(window['_markerRAF_' + id]);
+    window['_markerRAF_' + id] = requestAnimationFrame(function() {
+        // Save a clean snapshot (without markers) before drawing them
+        const cv = document.getElementById(id);
+        if (cv) {
+            const ctx = cv.getContext('2d');
+            _canvasSnapshots[id] = ctx.getImageData(0, 0, cv.width, cv.height);
+        }
+        _drawCanvasMarkers(id);
+    });
+}
+
+// Wrap a canvas in a zoom container and add zoom/pan controls
+function _ensureZoomWrap(cv) {
+    if (cv._zoomWrapped) return;
+    cv._zoomWrapped = true;
+    const id = cv.id;
+    _canvasZoomState[id] = { zoom: 1, panX: 0, panY: 0 };
+
+    // Wrap canvas in a container
+    const wrap = document.createElement('div');
+    wrap.className = 'canvas-zoom-wrap';
+    wrap.style.maxWidth = cv.style.maxWidth || '';
+    wrap.style.margin = cv.style.margin || '';
+    cv.parentNode.insertBefore(wrap, cv);
+    wrap.appendChild(cv);
+    // Move some styles from canvas to wrapper
+    cv.style.margin = '0';
+
+    // Zoom + pan controls
+    const controls = document.createElement('div');
+    controls.className = 'canvas-zoom-controls';
+    controls.innerHTML =
+        '<button class="canvas-zoom-btn" data-action="in">+</button>' +
+        '<button class="canvas-zoom-btn" data-action="out">&minus;</button>' +
+        '<button class="canvas-zoom-btn" data-action="up" style="font-size:12px;">&#9650;</button>' +
+        '<button class="canvas-zoom-btn" data-action="down" style="font-size:12px;">&#9660;</button>' +
+        '<button class="canvas-zoom-btn" data-action="left" style="font-size:12px;">&#9664;</button>' +
+        '<button class="canvas-zoom-btn" data-action="right" style="font-size:12px;">&#9654;</button>' +
+        '<button class="canvas-zoom-btn" data-action="reset" style="font-size:11px;">&#8634;</button>' +
+        '<button class="canvas-zoom-btn" data-action="clearmarkers" style="font-size:9px;" title="Limpar marcadores">&#10005;</button>' +
+        '<button class="canvas-zoom-btn" data-action="fullscreen" style="font-size:12px;" title="Tela cheia">&#x26F6;</button>';
+    wrap.appendChild(controls);
+
+    function applyTransform() {
+        const s = _canvasZoomState[id];
+        cv.style.transform = `scale(${s.zoom}) translate(${s.panX}px, ${s.panY}px)`;
+    }
+
+    // Button clicks
+    const PAN_STEP = 30;
+    controls.addEventListener('click', function(e) {
+        const btn = e.target.closest('.canvas-zoom-btn');
+        if (!btn) return;
+        const s = _canvasZoomState[id];
+        const action = btn.dataset.action;
+        if (action === 'in')    { s.zoom = Math.min(s.zoom * 1.3, 10); }
+        if (action === 'out')   { s.zoom = Math.max(s.zoom / 1.3, 0.5); }
+        if (action === 'up')    { s.panY += PAN_STEP / s.zoom; }
+        if (action === 'down')  { s.panY -= PAN_STEP / s.zoom; }
+        if (action === 'left')  { s.panX += PAN_STEP / s.zoom; }
+        if (action === 'right') { s.panX -= PAN_STEP / s.zoom; }
+        if (action === 'reset') { s.zoom = 1; s.panX = 0; s.panY = 0; }
+        if (action === 'fullscreen') {
+            if (document.fullscreenElement === wrap) {
+                document.exitFullscreen();
+            } else {
+                wrap.requestFullscreen().catch(function(){});
+            }
+            return;
+        }
+        if (action === 'clearmarkers') {
+            _canvasMarkers[id] = [];
+            // Restore clean snapshot (graph without markers)
+            if (_canvasSnapshots[id]) {
+                const ctx2 = cv.getContext('2d');
+                ctx2.putImageData(_canvasSnapshots[id], 0, 0);
+            }
+        }
+        applyTransform();
+        e.stopPropagation();
+    });
+
+    // Wheel zoom (centered on cursor)
+    cv.addEventListener('wheel', function(e) {
+        e.preventDefault();
+        const s = _canvasZoomState[id];
+        const rect = cv.getBoundingClientRect();
+        // Cursor position relative to canvas (in canvas coords before zoom)
+        const cx = (e.clientX - rect.left) / s.zoom;
+        const cy = (e.clientY - rect.top) / s.zoom;
+        const oldZoom = s.zoom;
+        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+        s.zoom = Math.max(0.5, Math.min(10, s.zoom * factor));
+        // Adjust pan so the point under the cursor stays fixed
+        s.panX += cx * (1 - s.zoom / oldZoom);
+        s.panY += cy * (1 - s.zoom / oldZoom);
+        applyTransform();
+    }, { passive: false });
+
+    // Pan via drag
+    let dragging = false, dragStartX, dragStartY, panStartX, panStartY;
+    cv.addEventListener('mousedown', function(e) {
+        const s = _canvasZoomState[id];
+        dragging = true;
+        dragStartX = e.clientX; dragStartY = e.clientY;
+        panStartX = s.panX; panStartY = s.panY;
+        cv.style.cursor = 'grabbing';
+        e.preventDefault();
+    });
+    window.addEventListener('mousemove', function(e) {
+        if (!dragging) return;
+        const s = _canvasZoomState[id];
+        s.panX = panStartX + (e.clientX - dragStartX) / s.zoom;
+        s.panY = panStartY + (e.clientY - dragStartY) / s.zoom;
+        applyTransform();
+    });
+    window.addEventListener('mouseup', function() {
+        if (dragging) {
+            dragging = false;
+            cv.style.cursor = '';
+        }
+    });
+
+    // Touch: pinch-to-zoom (2 fingers) + pan (1 finger)
+    let lastTouchDist = null, lastTouchX = null, lastTouchY = null;
+    cv.addEventListener('touchstart', function(e) {
+        if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            lastTouchDist = Math.sqrt(dx*dx + dy*dy);
+        } else if (e.touches.length === 1) {
+            lastTouchX = e.touches[0].clientX;
+            lastTouchY = e.touches[0].clientY;
+        }
+    }, { passive: true });
+    cv.addEventListener('touchmove', function(e) {
+        const s = _canvasZoomState[id];
+        if (e.touches.length === 2 && lastTouchDist) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            s.zoom = Math.max(0.5, Math.min(10, s.zoom * (dist / lastTouchDist)));
+            applyTransform();
+            lastTouchDist = dist;
+            e.preventDefault();
+        } else if (e.touches.length === 1 && lastTouchX !== null) {
+            const dx = e.touches[0].clientX - lastTouchX;
+            const dy = e.touches[0].clientY - lastTouchY;
+            s.panX += dx / s.zoom;
+            s.panY += dy / s.zoom;
+            applyTransform();
+            lastTouchX = e.touches[0].clientX;
+            lastTouchY = e.touches[0].clientY;
+            e.preventDefault();
+        }
+    }, { passive: false });
+    cv.addEventListener('touchend', function() { lastTouchDist = null; lastTouchX = null; lastTouchY = null; }, { passive: true });
+
+    // Double-click to place marker/lines
+    // Plain dblclick = marker point + crosshairs
+    // Shift+dblclick = horizontal line only
+    // Ctrl+dblclick = vertical line only
+    cv.addEventListener('dblclick', function(e) {
+        const cfg = _canvasTooltipRegistry[id];
+        if (!cfg) return;
+        const rect = cv.getBoundingClientRect();
+        // Use logical (CSS) dimensions — independent of devicePixelRatio
+        const cssW = cv._cssW || rect.width;
+        const cssH = cv._cssH || rect.height;
+        const px = (e.clientX - rect.left) * (cssW / rect.width);
+        const py = (e.clientY - rect.top)  * (cssH / rect.height);
+        const pad = cfg.pad || { l: 60, r: 20, t: 30, b: 40 };
+        const pw = cssW - pad.l - pad.r;
+        const ph = cssH - pad.t - pad.b;
+        if (px < pad.l || px > pad.l + pw || py < pad.t || py > pad.t + ph) return;
+
+        let dataX, dataY, label;
+        if (cfg.type === 'xy') {
+            dataX = cfg.xMin + ((px - pad.l) / pw) * (cfg.xMax - cfg.xMin);
+            dataY = cfg.yMin + (1 - (py - pad.t) / ph) * (cfg.yMax - cfg.yMin);
+            label = `(${fmt(dataX, 3)}, ${fmt(dataY, 3)})`;
+        } else if (cfg.type === 'bode') {
+            dataX = cfg.logXMin + ((px - pad.l) / pw) * (cfg.logXMax - cfg.logXMin);
+            dataY = cfg.yMin + (1 - (py - pad.t) / ph) * (cfg.yMax - cfg.yMin);
+            label = `(${fmt(Math.pow(10, dataX), 3)}, ${fmt(dataY, 3)})`;
+        } else if (cfg.type === 'splane' || cfg.type === 'discrete') {
+            dataX = (px - cfg.cx) / cfg.scale;
+            dataY = -(py - cfg.cy) / cfg.scale;
+            label = `(${fmt(dataX, 3)}, ${fmt(dataY, 3)}j)`;
+        } else {
+            return;
+        }
+
+        // Determine line type based on modifier keys
+        let lineType = 'both';
+        if (e.shiftKey && !e.ctrlKey) {
+            lineType = 'h';
+            label = `y=${cfg.type === 'bode' ? fmt(dataY, 3) : fmt(dataY, 3)}`;
+        } else if (e.ctrlKey && !e.shiftKey) {
+            lineType = 'v';
+            label = `x=${cfg.type === 'bode' ? fmt(Math.pow(10, dataX), 3) : fmt(dataX, 3)}`;
+        }
+
+        if (!_canvasMarkers[id]) _canvasMarkers[id] = [];
+        const idx = _canvasMarkers[id].length;
+        const color = MARKER_COLORS[idx % MARKER_COLORS.length];
+        _canvasMarkers[id].push({ px, py, dataX, dataY, label, color, lineType });
+        _drawCanvasMarkers(id);
+        e.preventDefault();
+        e.stopPropagation();
+    });
+
+    // Right-click to remove nearest marker
+    cv.addEventListener('contextmenu', function(e) {
+        const markers = _canvasMarkers[id];
+        if (!markers || markers.length === 0) return;
+        e.preventDefault();
+        const rect = cv.getBoundingClientRect();
+        const cssW = cv._cssW || rect.width;
+        const cssH = cv._cssH || rect.height;
+        const px = (e.clientX - rect.left) * (cssW / rect.width);
+        const py = (e.clientY - rect.top)  * (cssH / rect.height);
+        let minD = Infinity, minIdx = -1;
+        markers.forEach(function(m, i) {
+            const d = Math.hypot(m.px - px, m.py - py);
+            if (d < minD) { minD = d; minIdx = i; }
+        });
+        if (minD < 30 && minIdx >= 0) {
+            markers.splice(minIdx, 1);
+            // Restore clean snapshot then redraw remaining markers
+            if (_canvasSnapshots[id]) {
+                const ctx2 = cv.getContext('2d');
+                ctx2.putImageData(_canvasSnapshots[id], 0, 0);
+            }
+            _drawCanvasMarkers(id);
+        }
+    });
+}
+
+function registerCanvasTooltip(id, config) {
+    const cv = document.getElementById(id);
+    if (!cv) return;
+    cv.setAttribute('data-interactive', '1');
+    _canvasTooltipRegistry[id] = config;
+
+    // Setup zoom wrapper on first registration
+    _ensureZoomWrap(cv);
+
+    if (cv._tooltipBound) return;
+    cv._tooltipBound = true;
+
+    const tip = document.getElementById('canvas-tooltip');
+
+    cv.addEventListener('mousemove', function(e) {
+        const cfg = _canvasTooltipRegistry[id];
+        if (!cfg) return;
+        // If dragging (panning), don't show tooltip
+        const s = _canvasZoomState[id] || { zoom: 1, panX: 0, panY: 0 };
+        const rect = cv.getBoundingClientRect();
+        // Use logical (CSS) dimensions — independent of devicePixelRatio
+        const cssW = cv._cssW || rect.width;
+        const cssH = cv._cssH || rect.height;
+        const px = (e.clientX - rect.left) * (cssW / rect.width);
+        const py = (e.clientY - rect.top)  * (cssH / rect.height);
+        const pad = cfg.pad || { l: 60, r: 20, t: 30, b: 40 };
+        const pw = cssW - pad.l - pad.r;
+        const ph = cssH - pad.t - pad.b;
+
+        if (px < pad.l || px > pad.l + pw || py < pad.t || py > pad.t + ph) {
+            tip.classList.remove('visible');
+            return;
+        }
+
+        let lines = [];
+
+        if (cfg.type === 'xy') {
+            const xVal = cfg.xMin + ((px - pad.l) / pw) * (cfg.xMax - cfg.xMin);
+            const yVal = cfg.yMin + (1 - (py - pad.t) / ph) * (cfg.yMax - cfg.yMin);
+            lines.push(`<b>${cfg.xLabel || 'x'}:</b> ${fmt(xVal, 4)}${cfg.xUnit ? ' ' + cfg.xUnit : ''}`);
+            lines.push(`<b>${cfg.yLabel || 'y'}:</b> ${fmt(yVal, 4)}${cfg.yUnit ? ' ' + cfg.yUnit : ''}`);
+            if (cfg.getData) {
+                const extra = cfg.getData(xVal);
+                extra.forEach(d => lines.push(`<span style="color:${d.color||'#7ec8f7'}">${d.label}: ${d.value}</span>`));
+            }
+        } else if (cfg.type === 'bode') {
+            const logW = cfg.logXMin + ((px - pad.l) / pw) * (cfg.logXMax - cfg.logXMin);
+            const w = Math.pow(10, logW);
+            const yVal = cfg.yMin + (1 - (py - pad.t) / ph) * (cfg.yMax - cfg.yMin);
+            lines.push(`<b>ω:</b> ${fmt(w, 4)} rad/s`);
+            lines.push(`<b>${cfg.yLabel || 'y'}:</b> ${fmt(yVal, 3)}${cfg.yUnit ? ' ' + cfg.yUnit : ''}`);
+            if (cfg.getData) {
+                const extra = cfg.getData(w);
+                extra.forEach(d => lines.push(`<span style="color:${d.color||'#7ec8f7'}">${d.label}: ${d.value}</span>`));
+            }
+        } else if (cfg.type === 'splane' || cfg.type === 'discrete') {
+            const re = (px - cfg.cx) / cfg.scale;
+            const im = -(py - cfg.cy) / cfg.scale;
+            lines.push(`<b>Re(s):</b> ${fmt(re, 4)}`);
+            lines.push(`<b>Im(s):</b> ${fmt(im, 4)}`);
+            if (cfg.type === 'discrete') {
+                const mag = Math.sqrt(re * re + im * im);
+                const ang = Math.atan2(im, re) * 180 / Math.PI;
+                lines.push(`<b>|z|:</b> ${fmt(mag, 4)}`);
+                lines.push(`<b>∠z:</b> ${fmt(ang, 2)}°`);
+                lines.push(`<span style="color:${mag < 1 ? '#7ef7a0' : '#f77e7e'}">${mag < 1 ? 'Estavel (|z|<1)' : 'Instavel (|z|≥1)'}</span>`);
+            } else {
+                lines.push(`<span style="color:${re < 0 ? '#7ef7a0' : '#f77e7e'}">${re < 0 ? 'Estavel (Re<0)' : 'Instavel (Re≥0)'}</span>`);
+            }
+            if (cfg.getData) {
+                const extra = cfg.getData(re, im);
+                extra.forEach(d => lines.push(`<span style="color:${d.color||'#7ec8f7'}">${d.label}: ${d.value}</span>`));
+            }
+        }
+
+        if (lines.length === 0) { tip.classList.remove('visible'); return; }
+
+        tip.innerHTML = lines.join('<br>');
+        tip.classList.add('visible');
+
+        const tx = e.clientX + 16, ty = e.clientY - 10;
+        const tw = tip.offsetWidth, th = tip.offsetHeight;
+        tip.style.left = (tx + tw > window.innerWidth ? e.clientX - tw - 10 : tx) + 'px';
+        tip.style.top  = (ty + th > window.innerHeight ? e.clientY - th - 10 : ty) + 'px';
+    });
+
+    cv.addEventListener('mouseleave', function() {
+        document.getElementById('canvas-tooltip').classList.remove('visible');
+    });
+}
+// =============================================================================
 
 // ==================== 1) RESPOSTA AO DEGRAU 2a ORDEM ====================
 function drawStepResponse(zeta, wn, os, ts2, tp) {
@@ -3643,6 +4431,29 @@ function drawStepResponse(zeta, wn, os, ts2, tp) {
         }
         ctx.stroke();
     }
+
+    // Register interactive tooltip
+    registerCanvasTooltip('canvas_step', {
+        type: 'xy', pad,
+        xMin: 0, xMax: tMax, yMin: 0, yMax: yMax,
+        xLabel: 't', xUnit: 's', yLabel: 'c(t)',
+        getData: function(tVal) {
+            if (tVal < 0 || tVal > tMax) return [];
+            let ct;
+            if (zeta < 1 && zeta >= 0) {
+                const wd = wn * Math.sqrt(1 - zeta ** 2);
+                const beta = Math.acos(zeta);
+                ct = 1 - (Math.exp(-zeta * wn * tVal) / Math.sqrt(1 - zeta ** 2)) * Math.sin(wd * tVal + beta);
+            } else if (Math.abs(zeta - 1) < 0.001) {
+                ct = 1 - (1 + wn * tVal) * Math.exp(-wn * tVal);
+            } else {
+                const s1 = (-zeta + Math.sqrt(zeta ** 2 - 1)) * wn;
+                const s2 = (-zeta - Math.sqrt(zeta ** 2 - 1)) * wn;
+                ct = 1 + (s1 * Math.exp(s2 * tVal) - s2 * Math.exp(s1 * tVal)) / (s2 - s1);
+            }
+            return [{ label: 'c(t)', value: fmt(ct, 4), color: '#7ec8f7' }];
+        }
+    });
 }
 
 // ==================== 2) PLANO S - POLOS ====================
@@ -3711,6 +4522,20 @@ function drawSPlane(id, poles, title) {
 
     // Title
     if (title) { ctx.fillStyle = C.text; ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center'; ctx.fillText(title, cx, h - 4); }
+
+    // Register interactive tooltip
+    registerCanvasTooltip(id, { type: 'splane', pad: {l:30,r:10,t:10,b:10}, cx, cy, scale,
+        getData: function(re, im) {
+            const nearest = poles.reduce((best, p) => {
+                const d = Math.hypot(p.re - re, p.im - im);
+                return d < best.d ? {d, p} : best;
+            }, {d: Infinity, p: null});
+            if (nearest.d * scale < 18 && nearest.p) {
+                return [{ label: 'Polo', value: fmt(nearest.p.re,4) + (nearest.p.im >= 0 ? '+' : '') + fmt(nearest.p.im,4) + 'j', color: '#f77e7e' }];
+            }
+            return [];
+        }
+    });
 }
 
 // ==================== 3) BODE PLOT (2a ORDEM) ====================
@@ -3835,6 +4660,24 @@ function drawBodePlots(zeta, wn) {
     if (magAtPc !== null) document.getElementById('bode_mag_pc').value = fmt(magAtPc, 4);
     if (phaseAtGc !== null) document.getElementById('bode_phase_gc').value = fmt(phaseAtGc, 4);
     calcBode();
+
+    // Register interactive tooltip for Bode plots
+    registerCanvasTooltip('canvas_bode_mag', {
+        type: 'bode', pad, logXMin: logMin, logXMax: logMax, yMin: -60, yMax: 40,
+        yLabel: '|G|', yUnit: 'dB',
+        getData: function(w) {
+            const mag = getMag(w);
+            return [{ label: '|G(jω)|', value: fmt(mag, 2) + ' dB', color: '#7ec8f7' }];
+        }
+    });
+    registerCanvasTooltip('canvas_bode_phase', {
+        type: 'bode', pad, logXMin: logMin, logXMax: logMax, yMin: -200, yMax: 10,
+        yLabel: 'Fase', yUnit: '°',
+        getData: function(w) {
+            const ph = getPhase(w);
+            return [{ label: '∠G(jω)', value: fmt(ph, 2) + '°', color: '#f7d07e' }];
+        }
+    });
 }
 
 // ==================== 4) ERRO - RESPOSTA AO DEGRAU ====================
@@ -4156,6 +4999,10 @@ function drawZPlane(mod, re, im) {
             ctx.beginPath(); ctx.moveTo(px + sz, py2 - sz); ctx.lineTo(px - sz, py2 + sz); ctx.stroke();
         }
     }
+
+    registerCanvasTooltip('canvas_zplane', {
+        type: 'discrete', pad: {l:20,r:20,t:20,b:20}, cx, cy, scale
+    });
 }
 
 // ==================== 8) STATE SPACE EIGENVALUE PLOT ====================
@@ -4258,21 +5105,226 @@ function calcFullRL() {
     // Pad Npoly to same length as Dpoly
     while (Npoly.length < Dpoly.length) Npoly.unshift({ re: 0, im: 0 });
 
-    // For each K, form char poly = D + K*N, find roots
-    const nK = 200;
-    const allRoots = []; // Array of arrays of roots for each K
+    // ── Companion-matrix eigenvalue method ─────────────────────────────
+    // For each K, build the companion matrix of D(s)+K*N(s), then find its
+    // eigenvalues via the Francis QR algorithm. This gives ALL roots at once,
+    // accurately and in a deterministic order. Then we match roots to branches
+    // via minimum-total-distance assignment (Munkres-like greedy).
 
-    for (let ki = 0; ki <= nK; ki++) {
-        const K = kMin + (ki / nK) * (kMax - kMin);
-        const charPoly = Dpoly.map((d, i) => d.re + K * Npoly[i].re);
-        const roots = solvePolyDK(charPoly);
-        allRoots.push(roots);
+    const BRANCH_COLORS = [
+        '#1565C0','#C0392B','#27AE60','#8E44AD',
+        '#D35400','#16A085','#F39C12','#2980B9',
+        '#7D3C98','#117A65'
+    ];
+    const nBranches = poles.length;
+    const nK = 2000;
+    const allK = [];
+    const branches = Array.from({length: nBranches}, () => []);
+
+    // ── Companion matrix eigenvalue solver (Francis QR) ────────────────
+    // Given monic polynomial s^n + c[1]*s^(n-1) + ... + c[n],
+    // build companion matrix and extract eigenvalues via QR iteration.
+    // This is the gold-standard numerical method for polynomial roots.
+    function companionEig(coeffs) {
+        // coeffs: [a0, a1, ..., an] where a0*s^n + a1*s^(n-1) + ... + an = 0
+        // Normalize to monic
+        const n = coeffs.length - 1;
+        if (n < 1) return [];
+        if (n === 1) return [{ re: -coeffs[1]/coeffs[0], im: 0 }];
+        const c = coeffs.map(v => v / coeffs[0]);
+
+        // Build companion matrix (n x n), stored as flat array row-major
+        // Companion: last row = [-c[n], -c[n-1], ..., -c[1]]
+        //            above-diagonal = 1
+        const H = new Float64Array(n * n); // zero-initialized
+        for (let i = 0; i < n - 1; i++) H[(i + 1) * n + i] = 1; // sub-diagonal = 1 (lower Hessenberg)
+        for (let j = 0; j < n; j++) H[j] = -c[j + 1]; // first row
+
+        // Now H is already upper Hessenberg (companion form).
+        // Apply implicit double-shift QR (Francis) iteration.
+        // We work on the real matrix — 2x2 blocks give complex eigenvalue pairs.
+
+        const roots = [];
+        let nn = n; // active size
+        const maxIter = 80 * n;
+        let iter = 0;
+
+        while (nn > 0 && iter < maxIter) {
+            // Check for deflation: small subdiagonal element
+            if (nn === 1) {
+                roots.push({ re: H[0], im: 0 });
+                break;
+            }
+
+            // Look for small sub-diagonal from bottom
+            let l = nn - 1;
+            while (l > 0) {
+                const s_ = Math.abs(H[(l-1)*n+(l-1)]) + Math.abs(H[l*n+l]);
+                const threshold = (s_ === 0 ? 1e-14 : s_ * 1e-14);
+                if (Math.abs(H[l*n+(l-1)]) <= threshold) break;
+                l--;
+            }
+
+            if (l === nn - 1) {
+                // 1x1 block: real eigenvalue
+                roots.push({ re: H[(nn-1)*n+(nn-1)], im: 0 });
+                nn--;
+                continue;
+            }
+
+            if (l === nn - 2) {
+                // 2x2 block: solve eigenvalues directly
+                const a = H[(nn-2)*n+(nn-2)], b = H[(nn-2)*n+(nn-1)];
+                const cc = H[(nn-1)*n+(nn-2)], d = H[(nn-1)*n+(nn-1)];
+                const tr = a + d, det = a*d - b*cc;
+                const disc = tr*tr - 4*det;
+                if (disc >= 0) {
+                    const sq = Math.sqrt(disc);
+                    roots.push({ re: (tr+sq)/2, im: 0 });
+                    roots.push({ re: (tr-sq)/2, im: 0 });
+                } else {
+                    const sq = Math.sqrt(-disc);
+                    roots.push({ re: tr/2, im: sq/2 });
+                    roots.push({ re: tr/2, im: -sq/2 });
+                }
+                nn -= 2;
+                continue;
+            }
+
+            // Francis double shift QR step
+            // Wilkinson shift from bottom-right 2x2
+            const a11 = H[(nn-2)*n+(nn-2)], a12 = H[(nn-2)*n+(nn-1)];
+            const a21 = H[(nn-1)*n+(nn-2)], a22 = H[(nn-1)*n+(nn-1)];
+            const s_ = a11 + a22;
+            const p_ = a11*a22 - a12*a21;
+
+            // First column of M = H^2 - s*H + p*I (implicit)
+            let x = H[l*n+l]*H[l*n+l] + H[l*n+(l+1)]*H[(l+1)*n+l] - s_*H[l*n+l] + p_;
+            let y = H[(l+1)*n+l] * (H[l*n+l] + H[(l+1)*n+(l+1)] - s_);
+            let z = H[(l+1)*n+l] * H[(l+2)*n+(l+1)];
+
+            for (let k = l; k < nn - 2; k++) {
+                // Householder to zero out y, z below x
+                const norm = Math.sqrt(x*x + y*y + z*z);
+                if (norm < 1e-30) { x = H[(k+1)*n+k]; y = (k+2 < nn) ? H[(k+2)*n+k] : 0; z = (k+3 < nn) ? H[(k+3)*n+k] : 0; continue; }
+                const v0 = x + (x >= 0 ? norm : -norm);
+                const v1 = y, v2 = z;
+                const vnorm2 = v0*v0 + v1*v1 + v2*v2;
+                if (vnorm2 < 1e-30) { x = H[(k+1)*n+k]; y = (k+2 < nn) ? H[(k+2)*n+k] : 0; z = (k+3 < nn) ? H[(k+3)*n+k] : 0; continue; }
+
+                // Apply Householder P from left: H = P*H
+                const r0 = Math.max(0, k - 1);
+                for (let j = r0; j < nn; j++) {
+                    const dot = v0*H[k*n+j] + v1*H[(k+1)*n+j] + v2*H[(k+2)*n+j];
+                    const f = 2*dot/vnorm2;
+                    H[k*n+j] -= f*v0;
+                    H[(k+1)*n+j] -= f*v1;
+                    H[(k+2)*n+j] -= f*v2;
+                }
+                // Apply from right: H = H*P
+                const rEnd = Math.min(nn, k + 4);
+                for (let i = l; i < rEnd; i++) {
+                    const dot = v0*H[i*n+k] + v1*H[i*n+(k+1)] + v2*H[i*n+(k+2)];
+                    const f = 2*dot/vnorm2;
+                    H[i*n+k] -= f*v0;
+                    H[i*n+(k+1)] -= f*v1;
+                    H[i*n+(k+2)] -= f*v2;
+                }
+
+                x = H[(k+1)*n+k];
+                y = (k+2 < nn-1) ? H[(k+2)*n+k] : 0;
+                z = (k+3 < nn-1) ? H[(k+3)*n+k] : 0;
+            }
+
+            // Final 2x2 Givens rotation
+            if (nn - 2 > l) {
+                const k = nn - 2;
+                const rr = Math.sqrt(x*x + y*y);
+                if (rr > 1e-30) {
+                    const cs = x/rr, sn = y/rr;
+                    // left
+                    for (let j = Math.max(0,k-1); j < nn; j++) {
+                        const t1 = H[k*n+j], t2 = H[(k+1)*n+j];
+                        H[k*n+j] = cs*t1 + sn*t2;
+                        H[(k+1)*n+j] = -sn*t1 + cs*t2;
+                    }
+                    // right
+                    for (let i = l; i < Math.min(nn, k+3); i++) {
+                        const t1 = H[i*n+k], t2 = H[i*n+(k+1)];
+                        H[i*n+k] = cs*t1 + sn*t2;
+                        H[i*n+(k+1)] = -sn*t1 + cs*t2;
+                    }
+                }
+            }
+            iter++;
+        }
+
+        // Clean up near-zero imaginary parts
+        roots.forEach(r => { if (Math.abs(r.im) < 1e-6) r.im = 0; });
+        return roots;
     }
 
-    // Find plot bounds
+    // ── Solve for each K and track branches by nearest-match ───────────
+    // Use minimum-weight matching (greedy sorted by distance) at each step.
+    // With 800 steps, delta-K is tiny so roots barely move between steps.
+
+    const charPoly0 = Dpoly.map((d, i) => d.re + kMin * Npoly[i].re);
+    let prevRoots = companionEig(charPoly0);
+    if (prevRoots.length < nBranches) {
+        // fallback
+        prevRoots = solvePolyDK(charPoly0);
+    }
+
+    // Match initial roots to input poles
+    {
+        const ordered = new Array(nBranches);
+        const used = new Set();
+        for (let b = 0; b < nBranches; b++) {
+            let best = -1, bestD = Infinity;
+            for (let i = 0; i < prevRoots.length; i++) {
+                if (used.has(i)) continue;
+                const d = (prevRoots[i].re - poles[b].re)**2 + (prevRoots[i].im - poles[b].im)**2;
+                if (d < bestD) { bestD = d; best = i; }
+            }
+            if (best >= 0) { used.add(best); ordered[b] = prevRoots[best]; }
+            else ordered[b] = { re: poles[b].re, im: poles[b].im };
+        }
+        prevRoots = ordered;
+    }
+
+    // ── Collect all roots at each K (no branch tracking — just point cloud) ──
+    // allRoots[ki] = array of { re, im } for each K value
+    const allRoots = [];
+    for (let b = 0; b < nBranches; b++) branches[b].push({ re: prevRoots[b].re, im: prevRoots[b].im });
+    allK.push(kMin);
+    allRoots.push(prevRoots.map(r => ({ re: r.re, im: r.im })));
+
+    for (let ki = 1; ki <= nK; ki++) {
+        const t = ki / nK;
+        const K = kMin + t * (kMax - kMin);
+        allK.push(K);
+        const charPoly = Dpoly.map((d, i) => d.re + K * Npoly[i].re);
+        let roots = companionEig(charPoly);
+        if (roots.length < nBranches) roots = solvePolyDK(charPoly);
+
+        // Enforce conjugate symmetry on the raw roots
+        for (let i = 0; i < roots.length; i++) {
+            if (Math.abs(roots[i].im) < 1e-9) roots[i].im = 0;
+        }
+
+        allRoots.push(roots.map(r => ({ re: r.re, im: r.im })));
+
+        // Also fill branches array for tooltip (just use sorted order)
+        roots.sort((a, b) => a.re !== b.re ? a.re - b.re : a.im - b.im);
+        for (let b = 0; b < nBranches && b < roots.length; b++) {
+            branches[b].push({ re: roots[b].re, im: roots[b].im });
+        }
+    }
+
+    // ── Bounds ─────────────────────────────────────────────────────────
     let rMin = -1, rMax = 1, iMin = -1, iMax = 1;
-    allRoots.forEach(roots => roots.forEach(r => {
-        if (Math.abs(r.re) < 50 && Math.abs(r.im) < 50) {
+    branches.forEach(br => br.forEach(r => {
+        if (isFinite(r.re) && isFinite(r.im) && Math.abs(r.re) < 1e4 && Math.abs(r.im) < 1e4) {
             rMin = Math.min(rMin, r.re); rMax = Math.max(rMax, r.re);
             iMin = Math.min(iMin, r.im); iMax = Math.max(iMax, r.im);
         }
@@ -4282,7 +5334,6 @@ function calcFullRL() {
 
     const margin = Math.max(Math.abs(rMax - rMin), Math.abs(iMax - iMin)) * 0.15 + 0.5;
     rMin -= margin; rMax += margin;
-    // Make symmetric in imaginary
     const iAbs = Math.max(Math.abs(iMin), Math.abs(iMax)) + margin;
     iMin = -iAbs; iMax = iAbs;
 
@@ -4291,7 +5342,7 @@ function calcFullRL() {
     const toX = v => pad.l + ((v - rMin) / (rMax - rMin)) * pw;
     const toY = v => pad.t + ph - ((v - iMin) / (iMax - iMin)) * ph;
 
-    // Grid
+    // ── Grid ───────────────────────────────────────────────────────────
     ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
     const rStep = Math.pow(10, Math.floor(Math.log10(Math.max(rMax - rMin, 1)))) / 2;
     for (let v = Math.ceil(rMin / rStep) * rStep; v <= rMax; v += rStep) {
@@ -4308,7 +5359,7 @@ function calcFullRL() {
         }
     }
 
-    // Axes
+    // ── Axes ───────────────────────────────────────────────────────────
     ctx.strokeStyle = C.axis; ctx.lineWidth = 1.2;
     if (rMin < 0 && rMax > 0) { ctx.beginPath(); ctx.moveTo(toX(0), pad.t); ctx.lineTo(toX(0), pad.t + ph); ctx.stroke(); }
     ctx.beginPath(); ctx.moveTo(pad.l, toY(0)); ctx.lineTo(pad.l + pw, toY(0)); ctx.stroke();
@@ -4316,50 +5367,128 @@ function calcFullRL() {
     ctx.fillText('Re(s)', pad.l + pw - 15, toY(0) - 8);
     if (rMin < 0 && rMax > 0) ctx.fillText('Im(s)', toX(0) + 18, pad.t + 6);
 
-    // Root locus traces
-    ctx.fillStyle = 'rgba(21,101,192,0.35)';
-    allRoots.forEach(roots => {
-        roots.forEach(root => {
-            if (Math.abs(root.re) < 50 && Math.abs(root.im) < 50) {
-                ctx.beginPath(); ctx.arc(toX(root.re), toY(root.im), 1.2, 0, Math.PI * 2); ctx.fill();
+    // ── Draw root locus as point cloud ─────────────────────────────────
+    // Assign each root a branch color based on nearest pole (at that K step).
+    // Use incremental tracking: at each K step, match to previous assignment.
+    const prevAssign = []; // prevAssign[rootIdx] = branchIdx
+    // Initial assignment: match roots to poles
+    {
+        const r0 = allRoots[0];
+        const usedP = new Set();
+        const pairs0 = [];
+        for (let i = 0; i < r0.length; i++)
+            for (let p = 0; p < poles.length; p++)
+                pairs0.push({ i, p, d: (r0[i].re-poles[p].re)**2 + (r0[i].im-poles[p].im)**2 });
+        pairs0.sort((a, b) => a.d - b.d);
+        const usedI = new Set();
+        for (const pr of pairs0) {
+            if (usedI.has(pr.i) || usedP.has(pr.p)) continue;
+            usedI.add(pr.i); usedP.add(pr.p);
+            prevAssign[pr.i] = pr.p;
+        }
+    }
+    let prevRts = allRoots[0];
+    const dotR = Math.max(1.2, Math.min(2.2, 600 / nK));
+    for (let ki = 0; ki <= nK; ki++) {
+        const rts = allRoots[ki];
+        if (ki > 0) {
+            // Match rts to prevRts by nearest distance, propagate branch assignment
+            const newAssign = new Array(rts.length).fill(-1);
+            const pairs2 = [];
+            for (let i = 0; i < rts.length; i++)
+                for (let j = 0; j < prevRts.length; j++)
+                    pairs2.push({ i, j, d: (rts[i].re-prevRts[j].re)**2 + (rts[i].im-prevRts[j].im)**2 });
+            pairs2.sort((a, b) => a.d - b.d);
+            const usI = new Set(), usJ = new Set();
+            for (const pr of pairs2) {
+                if (usI.has(pr.i) || usJ.has(pr.j)) continue;
+                usI.add(pr.i); usJ.add(pr.j);
+                newAssign[pr.i] = prevAssign[pr.j];
             }
-        });
-    });
+            for (let i = 0; i < rts.length; i++) prevAssign[i] = newAssign[i] >= 0 ? newAssign[i] : 0;
+            prevRts = rts;
+        }
+        for (let i = 0; i < rts.length; i++) {
+            const r = rts[i];
+            if (!isFinite(r.re) || !isFinite(r.im) || Math.abs(r.re) > 1e4 || Math.abs(r.im) > 1e4) continue;
+            const bIdx = prevAssign[i] != null ? prevAssign[i] : 0;
+            ctx.fillStyle = BRANCH_COLORS[bIdx % BRANCH_COLORS.length];
+            ctx.beginPath();
+            ctx.arc(toX(r.re), toY(r.im), dotR, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
 
-    // Draw open-loop poles (X) and zeros (O)
-    poles.forEach(p => {
+    // ── Poles (×) and Zeros (○) ────────────────────────────────────────
+    poles.forEach((p, b) => {
+        const color = BRANCH_COLORS[b % BRANCH_COLORS.length];
         const px = toX(p.re), py = toY(p.im);
-        ctx.strokeStyle = C.pole; ctx.lineWidth = 2.5;
+        ctx.strokeStyle = color; ctx.lineWidth = 2.5;
         const sz = 7;
-        ctx.beginPath(); ctx.moveTo(px - sz, py - sz); ctx.lineTo(px + sz, py + sz); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(px + sz, py - sz); ctx.lineTo(px - sz, py + sz); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(px-sz, py-sz); ctx.lineTo(px+sz, py+sz); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(px+sz, py-sz); ctx.lineTo(px-sz, py+sz); ctx.stroke();
     });
     zeros.forEach(z => {
         const px = toX(z.re), py = toY(z.im);
         ctx.strokeStyle = C.zero; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI*2); ctx.stroke();
     });
 
-    // Legend
-    ctx.font = '10px Segoe UI';
-    ctx.strokeStyle = C.pole; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(pad.l + 8, pad.t + 10); ctx.lineTo(pad.l + 18, pad.t + 20); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(pad.l + 18, pad.t + 10); ctx.lineTo(pad.l + 8, pad.t + 20); ctx.stroke();
-    ctx.fillStyle = C.text; ctx.textAlign = 'left'; ctx.fillText('Polos MA', pad.l + 22, pad.t + 18);
-
+    // ── Legend ─────────────────────────────────────────────────────────
+    ctx.font = '10px Segoe UI'; ctx.textAlign = 'left';
+    let legendY = pad.t + 14;
+    poles.forEach((p, b) => {
+        const color = BRANCH_COLORS[b % BRANCH_COLORS.length];
+        ctx.strokeStyle = color; ctx.lineWidth = 2;
+        const sz = 4;
+        ctx.beginPath(); ctx.moveTo(pad.l+8-sz, legendY-sz); ctx.lineTo(pad.l+8+sz, legendY+sz); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pad.l+8+sz, legendY-sz); ctx.lineTo(pad.l+8-sz, legendY+sz); ctx.stroke();
+        ctx.fillStyle = color;
+        const label = `Polo ${b+1}: ${fmt(p.re,2)}${p.im!==0 ? (p.im>0?'+':'')+fmt(p.im,2)+'j' : ''}`;
+        ctx.fillText(label, pad.l + 18, legendY + 3);
+        legendY += 14;
+    });
     if (zeros.length > 0) {
         ctx.strokeStyle = C.zero; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(pad.l + 13, pad.t + 33, 6, 0, Math.PI * 2); ctx.stroke();
-        ctx.fillStyle = C.text; ctx.fillText('Zeros MA', pad.l + 22, pad.t + 36);
+        ctx.beginPath(); ctx.arc(pad.l+8, legendY, 5, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle = C.text; ctx.fillText('Zeros MA', pad.l + 18, legendY + 3);
+        legendY += 14;
     }
 
-    ctx.fillStyle = 'rgba(21,101,192,0.8)';
-    ctx.beginPath(); ctx.arc(pad.l + 13, pad.t + (zeros.length > 0 ? 50 : 33), 3, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = C.text; ctx.fillText('Lugar das Raizes', pad.l + 22, pad.t + (zeros.length > 0 ? 53 : 36));
-
-    // Title
+    // ── Title ──────────────────────────────────────────────────────────
     ctx.fillStyle = C.text; ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center';
     ctx.fillText('Root Locus: K = ' + fmt(kMin, 1) + ' a ' + fmt(kMax, 1), w / 2, h - 6);
+
+    // ── Interactive tooltip ────────────────────────────────────────────
+    const _rlBranches = branches.map(br => br.slice());
+    const _rlK = allK.slice();
+    registerCanvasTooltip('canvas_fullrlocus', {
+        type: 'splane', pad,
+        cx: toX(0), cy: toY(0),
+        scale: pw / (rMax - rMin),
+        getData: function(re, im) {
+            let bestDist = Infinity, bestK = null, bestBranch = -1, bestRe = re, bestIm = im;
+            _rlBranches.forEach((br, b) => {
+                br.forEach((r, ki) => {
+                    const d = (r.re-re)**2 + (r.im-im)**2;
+                    if (d < bestDist) { bestDist = d; bestK = _rlK[ki]; bestBranch = b; bestRe = r.re; bestIm = r.im; }
+                });
+            });
+            const lines = [];
+            const thresh = ((rMax - rMin) * 0.06) ** 2;
+            if (bestK !== null && bestDist < thresh) {
+                const color = BRANCH_COLORS[bestBranch % BRANCH_COLORS.length];
+                lines.push({ label: `Ramo ${bestBranch+1}`, value: `Polo ${bestBranch+1}`, color });
+                lines.push({ label: 'K', value: fmt(bestK, 4), color: '#ffd97e' });
+                const wn = Math.sqrt(bestRe**2 + bestIm**2);
+                if (wn > 1e-6) {
+                    lines.push({ label: 'ωn', value: fmt(wn,4)+' rad/s', color: '#7ec8f7' });
+                    lines.push({ label: 'ζ',  value: fmt(-bestRe/wn, 4), color: '#7ec8f7' });
+                }
+            }
+            return lines;
+        }
+    });
     } catch(e) { console.error('Erro ao desenhar Root Locus:', e); }
 }
 
@@ -4869,6 +5998,26 @@ function drawGenericBode(num, den, label) {
 
     drawOnCanvas('canvas_bode_mag', bd.mags, magMin, magMax, '|G| (dB)', false);
     drawOnCanvas('canvas_bode_phase', bd.phases, phMin, phMax, 'Fase (°)', true);
+
+    // Interactive tooltips for generic Bode
+    registerCanvasTooltip('canvas_bode_mag', {
+        type: 'bode', pad, logXMin: logMin, logXMax: logMax, yMin: magMin, yMax: magMax,
+        yLabel: '|G|', yUnit: 'dB',
+        getData: function(w) {
+            const idx = Math.round((Math.log10(w) - logMin) / (logMax - logMin) * (bd.freqs.length - 1));
+            const mag = bd.mags[Math.max(0, Math.min(idx, bd.mags.length - 1))];
+            return [{ label: '|G(jω)|', value: fmt(mag, 2) + ' dB', color: '#7ec8f7' }];
+        }
+    });
+    registerCanvasTooltip('canvas_bode_phase', {
+        type: 'bode', pad, logXMin: logMin, logXMax: logMax, yMin: phMin, yMax: phMax,
+        yLabel: 'Fase', yUnit: '°',
+        getData: function(w) {
+            const idx = Math.round((Math.log10(w) - logMin) / (logMax - logMin) * (bd.freqs.length - 1));
+            const ph = bd.phases[Math.max(0, Math.min(idx, bd.phases.length - 1))];
+            return [{ label: '∠G(jω)', value: fmt(ph, 2) + '°', color: '#f7d07e' }];
+        }
+    });
     return bd;
 }
 
@@ -5215,6 +6364,18 @@ function sidDrawData() {
     ctx.fillText('y(t)', 0, 0); ctx.restore();
     ctx.fillStyle = '#1565c0'; ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'left';
     ctx.fillText('Dados medidos (' + sid_t.length + ' pts)', pad.l + 6, pad.t + 12);
+
+    registerCanvasTooltip('canvas_sid_data', {
+        type: 'xy', pad, xMin: tMin, xMax: tMax, yMin, yMax,
+        xLabel: 't', xUnit: 's', yLabel: 'y(t)',
+        getData: function(tVal) {
+            const idx = sid_t.reduce((best, t, i) => Math.abs(t - tVal) < Math.abs(sid_t[best] - tVal) ? i : best, 0);
+            return [
+                { label: 'y[' + idx + ']', value: fmt(sid_y[idx], 4), color: '#7ec8f7' },
+                { label: 'u[' + idx + ']', value: fmt(sid_u[idx] || 1, 4), color: '#f7d07e' }
+            ];
+        }
+    });
 }
 
 function sidMethodChanged() {
@@ -6220,6 +7381,21 @@ function sidDrawCompare(yHat) {
     // Axis labels
     ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
     ctx.fillText('Tempo (s)', pad.l + pw / 2, h - 3);
+
+    const _yHatRef = yHat;
+    registerCanvasTooltip('canvas_sid_compare', {
+        type: 'xy', pad, xMin: tMin, xMax: tMax, yMin, yMax,
+        xLabel: 't', xUnit: 's', yLabel: 'y',
+        getData: function(tVal) {
+            const idx = sid_t.reduce((best, t, i) => Math.abs(t - tVal) < Math.abs(sid_t[best] - tVal) ? i : best, 0);
+            const err = sid_y[idx] - _yHatRef[idx];
+            return [
+                { label: 'Medido', value: fmt(sid_y[idx], 4), color: '#7ec8f7' },
+                { label: 'Estimado', value: fmt(_yHatRef[idx], 4), color: '#f77e7e' },
+                { label: 'Erro', value: fmt(err, 5), color: '#aaa' }
+            ];
+        }
+    });
 }
 
 function sidDrawResiduals(yHat) {
@@ -6267,6 +7443,17 @@ function sidDrawResiduals(yHat) {
 
     ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
     ctx.fillText('Residuos e(k) = y(k) - ŷ(k)', pad.l + pw / 2, h - 4);
+
+    const _residRef = resid;
+    registerCanvasTooltip('canvas_sid_resid', {
+        type: 'xy', pad, xMin: tMin, xMax: tMax, yMin: -rMax, yMax: rMax,
+        xLabel: 't', xUnit: 's', yLabel: 'e(k)',
+        getData: function(tVal) {
+            const idx = sid_t.reduce((best, t, i) => Math.abs(t - tVal) < Math.abs(sid_t[best] - tVal) ? i : best, 0);
+            const e = _residRef[idx];
+            return [{ label: 'e[' + idx + ']', value: fmt(e, 5), color: e >= 0 ? '#7ef7a0' : '#f77e7e' }];
+        }
+    });
 }
 
 function sidDrawBode() {
@@ -6395,6 +7582,33 @@ function sidDrawBode() {
 
     drawBodeSub('canvas_sid_bode_mag', mags, '|G| (dB)');
     drawBodeSub('canvas_sid_bode_phase', phases, 'Fase (°)');
+
+    // Interactive tooltips for SID Bode
+    const _sidMags = mags, _sidPhases = phases;
+    registerCanvasTooltip('canvas_sid_bode_mag', {
+        type: 'bode', pad: { l: 55, r: 15, t: 15, b: 30 },
+        logXMin: logMin, logXMax: logMax,
+        yMin: Math.min(...mags) - (Math.max(...mags) - Math.min(...mags)) * 0.1,
+        yMax: Math.max(...mags) + (Math.max(...mags) - Math.min(...mags)) * 0.1,
+        yLabel: '|G|', yUnit: 'dB',
+        getData: function(w) {
+            const idx = Math.round((Math.log10(w) - logMin) / (logMax - logMin) * Npts);
+            const mag = _sidMags[Math.max(0, Math.min(idx, _sidMags.length - 1))];
+            return [{ label: '|G(jω)|', value: fmt(mag, 2) + ' dB', color: '#7ec8f7' }];
+        }
+    });
+    registerCanvasTooltip('canvas_sid_bode_phase', {
+        type: 'bode', pad: { l: 55, r: 15, t: 15, b: 30 },
+        logXMin: logMin, logXMax: logMax,
+        yMin: Math.min(...phases) - (Math.max(...phases) - Math.min(...phases)) * 0.1,
+        yMax: Math.max(...phases) + (Math.max(...phases) - Math.min(...phases)) * 0.1,
+        yLabel: 'Fase', yUnit: '°',
+        getData: function(w) {
+            const idx = Math.round((Math.log10(w) - logMin) / (logMax - logMin) * Npts);
+            const ph = _sidPhases[Math.max(0, Math.min(idx, _sidPhases.length - 1))];
+            return [{ label: '∠G(jω)', value: fmt(ph, 2) + '°', color: '#f7d07e' }];
+        }
+    });
 }
 
 // Init sysid empty canvases

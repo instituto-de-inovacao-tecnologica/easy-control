@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sort -t: -k2 -n)",
+      "Read(//tmp/**)"
+    ]
+  }
+}
