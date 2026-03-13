@@ -367,11 +367,12 @@
             position: absolute; top: 6px; right: 6px;
             display: grid;
             grid-template-columns: 26px 26px 26px;
-            grid-template-rows: 26px 26px 26px;
+            grid-template-rows: 26px 26px 26px 26px;
             grid-template-areas:
                 "zin  up   zout"
                 "left reset right"
-                "fs   down clear";
+                "fs   down clear"
+                "draw draw  draw";
             gap: 3px; z-index: 5;
             opacity: 0; transition: opacity 0.2s;
         }
@@ -392,11 +393,14 @@
         .canvas-zoom-btn[data-action="reset"] { grid-area: reset; }
         .canvas-zoom-btn[data-action="fullscreen"]   { grid-area: fs; }
         .canvas-zoom-btn[data-action="clearmarkers"] { grid-area: clear; }
+        .canvas-zoom-btn[data-action="draw"] { grid-area: draw; width: auto; font-size: 10px; padding: 0 6px; }
+        .canvas-zoom-btn[data-action="draw"].active { background: rgba(231,76,60,0.85); }
         .canvas-zoom-wrap:fullscreen {
             background: #0a0f1e; display: flex; align-items: center; justify-content: center;
+            width: 100vw; height: 100vh;
         }
         .canvas-zoom-wrap:fullscreen canvas {
-            max-width: 100vw; max-height: 100vh; width: auto; height: auto;
+            max-width: 96vw !important; max-height: 92vh !important;
         }
         .canvas-zoom-wrap:fullscreen .canvas-zoom-controls { opacity: 1; top: 12px; right: 12px; }
         @keyframes sid-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -2757,28 +2761,38 @@ function calc1ordem() {
 }
 
 function draw1stepResponse(K, tau, ts2, tr) {
-    const r = getCtx('canvas_step1');
+    const _canvasId = 'canvas_step1';
+    const r = getCtx(_canvasId);
     if (!r || !tau || tau <= 0 || !isFinite(tau)) return;
     const { ctx, w, h } = r;
     const pad = { l: 60, r: 20, t: 30, b: 40 };
     const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
 
-    let tMax = Math.max(5 * tau, (ts2 || 5 * tau) * 1.3);
-    if (!isFinite(tMax) || tMax <= 0) tMax = 10;
-    const yMax = Math.abs(K) * 1.2 || 1.2;
-    const toX = t => pad.l + (t / tMax) * pw;
-    const toY = v => pad.t + ph - (v / yMax) * ph;
+    let defTMax = Math.max(5 * tau, (ts2 || 5 * tau) * 1.3);
+    if (!isFinite(defTMax) || defTMax <= 0) defTMax = 10;
+    const defYMax = Math.abs(K) * 1.2 || 1.2;
+
+    const vs = _canvasViewState[_canvasId];
+    let xMin, xMax, yMin, yMax;
+    if (vs && vs._userZoomed) {
+        xMin = vs.xMin; xMax = vs.xMax; yMin = vs.yMin; yMax = vs.yMax;
+    } else {
+        xMin = 0; xMax = defTMax; yMin = 0; yMax = defYMax;
+    }
+    const xRange = xMax - xMin, yRange = yMax - yMin;
+    const toX = t => pad.l + ((t - xMin) / xRange) * pw;
+    const toY = v => pad.t + ph - ((v - yMin) / yRange) * ph;
 
     // Grid
     ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
     for (let i = 0; i <= 5; i++) {
-        const yv = (i / 5) * yMax;
+        const yv = yMin + (i / 5) * yRange;
         ctx.beginPath(); ctx.moveTo(pad.l, toY(yv)); ctx.lineTo(pad.l + pw, toY(yv)); ctx.stroke();
         ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'right';
         ctx.fillText(fmt(yv, 2), pad.l - 5, toY(yv) + 3);
     }
     for (let i = 0; i <= 6; i++) {
-        const tv = (i / 6) * tMax;
+        const tv = xMin + (i / 6) * xRange;
         ctx.beginPath(); ctx.moveTo(toX(tv), pad.t); ctx.lineTo(toX(tv), pad.t + ph); ctx.stroke();
         ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'center';
         ctx.fillText(fmt(tv, 2), toX(tv), h - pad.b + 14);
@@ -2788,44 +2802,59 @@ function draw1stepResponse(K, tau, ts2, tr) {
     ctx.strokeStyle = C.axis; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph); ctx.stroke();
 
+    // Clip to plot area
+    ctx.save();
+    ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
+
     // Final value line
-    ctx.strokeStyle = '#95a5a6'; ctx.lineWidth = 0.8; ctx.setLineDash([5, 3]);
-    ctx.beginPath(); ctx.moveTo(pad.l, toY(K)); ctx.lineTo(pad.l + pw, toY(K)); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#95a5a6'; ctx.font = '9px Segoe UI'; ctx.textAlign = 'left';
-    ctx.fillText('K = ' + fmt(K, 3), pad.l + pw - 50, toY(K) - 5);
+    if (K >= yMin && K <= yMax) {
+        ctx.strokeStyle = '#95a5a6'; ctx.lineWidth = 0.8; ctx.setLineDash([5, 3]);
+        ctx.beginPath(); ctx.moveTo(pad.l, toY(K)); ctx.lineTo(pad.l + pw, toY(K)); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#95a5a6'; ctx.font = '9px Segoe UI'; ctx.textAlign = 'left';
+        ctx.fillText('K = ' + fmt(K, 3), pad.l + pw - 50, toY(K) - 5);
+    }
 
     // Step response curve: c(t) = K(1 - e^(-t/tau))
+    const tStart = Math.max(0, xMin);
     ctx.strokeStyle = C.line; ctx.lineWidth = 2.5;
     ctx.beginPath();
-    for (let i = 0; i <= 200; i++) {
-        const t = (i / 200) * tMax;
+    const dt1 = xRange / 400;
+    let first = true;
+    for (let t = tStart; t <= xMax; t += dt1) {
         const y = K * (1 - Math.exp(-t / tau));
-        i === 0 ? ctx.moveTo(toX(t), toY(y)) : ctx.lineTo(toX(t), toY(y));
+        first ? (ctx.moveTo(toX(t), toY(y)), first = false) : ctx.lineTo(toX(t), toY(y));
     }
     ctx.stroke();
 
     // Mark tau (63.2%)
-    ctx.fillStyle = C.ann; ctx.strokeStyle = C.ann; ctx.lineWidth = 0.8; ctx.setLineDash([3, 3]);
-    ctx.beginPath(); ctx.moveTo(toX(tau), pad.t); ctx.lineTo(toX(tau), pad.t + ph); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.beginPath(); ctx.arc(toX(tau), toY(K * 0.632), 4, 0, Math.PI * 2); ctx.fill();
-    ctx.font = '10px Segoe UI'; ctx.textAlign = 'left';
-    ctx.fillText('τ = ' + fmt(tau, 3) + 's (63.2%)', toX(tau) + 6, toY(K * 0.632) - 8);
+    if (tau >= xMin && tau <= xMax) {
+        ctx.fillStyle = C.ann; ctx.strokeStyle = C.ann; ctx.lineWidth = 0.8; ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.moveTo(toX(tau), pad.t); ctx.lineTo(toX(tau), pad.t + ph); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.beginPath(); ctx.arc(toX(tau), toY(K * 0.632), 4, 0, Math.PI * 2); ctx.fill();
+        ctx.font = '10px Segoe UI'; ctx.textAlign = 'left';
+        ctx.fillText('τ = ' + fmt(tau, 3) + 's (63.2%)', toX(tau) + 6, toY(K * 0.632) - 8);
+    }
 
     // Mark ts2
-    if (ts2) {
+    if (ts2 && ts2 >= xMin && ts2 <= xMax) {
         ctx.fillStyle = C.line2; ctx.strokeStyle = C.line2; ctx.lineWidth = 0.8; ctx.setLineDash([3, 3]);
         ctx.beginPath(); ctx.moveTo(toX(ts2), pad.t); ctx.lineTo(toX(ts2), pad.t + ph); ctx.stroke();
         ctx.setLineDash([]);
         ctx.font = '9px Segoe UI'; ctx.fillText('ts(2%)=' + fmt(ts2, 2) + 's', toX(ts2) + 4, pad.t + 14);
     }
 
+    ctx.restore(); // end clip
+
     ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
     ctx.fillText('Tempo (s)', pad.l + pw / 2, h - 4);
 
-    registerCanvasTooltip('canvas_step1', {
-        type: 'xy', pad, xMin: 0, xMax: tMax, yMin: 0, yMax: yMax,
+    registerCanvasRedraw(_canvasId, function() { draw1stepResponse(K, tau, ts2, tr); },
+        { xMin: xMin, xMax: xMax, yMin: yMin, yMax: yMax });
+
+    registerCanvasTooltip(_canvasId, {
+        type: 'xy', pad, xMin: xMin, xMax: xMax, yMin: yMin, yMax: yMax,
         xLabel: 't', xUnit: 's', yLabel: 'c(t)',
         getData: function(tVal) {
             const ct = K * (1 - Math.exp(-tVal / tau));
@@ -3571,24 +3600,33 @@ function drawHighOrderStep(canvasId, poles, K) {
         for (let i = 0; i < n; i++) x[i] += xd[i] * dt;
     }
 
-    // Find y range
-    let yMin = Math.min(0, ...yArr), yMax = Math.max(K * 1.1, ...yArr);
-    const yMarg = (yMax - yMin) * 0.08;
-    yMin -= yMarg; yMax += yMarg;
+    // Find default y range
+    let defYMin = Math.min(0, ...yArr), defYMax = Math.max(K * 1.1, ...yArr);
+    const yMarg = (defYMax - defYMin) * 0.08;
+    defYMin -= yMarg; defYMax += yMarg;
 
-    const toX = t => pad.l + (t / tMax) * pw;
-    const toY = v => pad.t + ph - ((v - yMin) / (yMax - yMin)) * ph;
+    // Use view state if user has zoomed
+    const vs = _canvasViewState[canvasId];
+    let vxMin, vxMax, vyMin, vyMax;
+    if (vs && vs._userZoomed) {
+        vxMin = vs.xMin; vxMax = vs.xMax; vyMin = vs.yMin; vyMax = vs.yMax;
+    } else {
+        vxMin = 0; vxMax = tMax; vyMin = defYMin; vyMax = defYMax;
+    }
+    const xRange = vxMax - vxMin, yRange = vyMax - vyMin;
+    const toX = t => pad.l + ((t - vxMin) / xRange) * pw;
+    const toY = v => pad.t + ph - ((v - vyMin) / yRange) * ph;
 
     // Grid
     ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
     for (let i = 0; i <= 5; i++) {
-        const yv = yMin + (i / 5) * (yMax - yMin);
+        const yv = vyMin + (i / 5) * yRange;
         ctx.beginPath(); ctx.moveTo(pad.l, toY(yv)); ctx.lineTo(pad.l + pw, toY(yv)); ctx.stroke();
         ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'right';
         ctx.fillText(fmt(yv, 2), pad.l - 5, toY(yv) + 3);
     }
     for (let i = 0; i <= 6; i++) {
-        const tv = (i / 6) * tMax;
+        const tv = vxMin + (i / 6) * xRange;
         ctx.beginPath(); ctx.moveTo(toX(tv), pad.t); ctx.lineTo(toX(tv), pad.t + ph); ctx.stroke();
         ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'center';
         ctx.fillText(fmt(tv, 2), toX(tv), h - pad.b + 14);
@@ -3598,6 +3636,10 @@ function drawHighOrderStep(canvasId, poles, K) {
     ctx.strokeStyle = C.axis; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph); ctx.stroke();
 
+    // Clip to plot area
+    ctx.save();
+    ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
+
     // Final value line
     ctx.strokeStyle = '#95a5a6'; ctx.lineWidth = 0.8; ctx.setLineDash([5, 3]);
     ctx.beginPath(); ctx.moveTo(pad.l, toY(K)); ctx.lineTo(pad.l + pw, toY(K)); ctx.stroke();
@@ -3606,19 +3648,24 @@ function drawHighOrderStep(canvasId, poles, K) {
     // Curve
     ctx.strokeStyle = C.line; ctx.lineWidth = 2.5;
     ctx.beginPath();
+    let first = true;
     for (let i = 0; i < tArr.length; i++) {
-        i === 0 ? ctx.moveTo(toX(tArr[i]), toY(yArr[i])) : ctx.lineTo(toX(tArr[i]), toY(yArr[i]));
+        first ? (ctx.moveTo(toX(tArr[i]), toY(yArr[i])), first = false) : ctx.lineTo(toX(tArr[i]), toY(yArr[i]));
     }
     ctx.stroke();
+
+    ctx.restore(); // end clip
 
     // Labels
     ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
     ctx.fillText('Tempo (s)', pad.l + pw / 2, h - 4);
     ctx.fillText('Resposta ao degrau — ' + n + 'a ordem', pad.l + pw / 2, pad.t - 8);
 
-    const _yMin = Math.min(...yArr), _yMax = Math.max(...yArr, K) * 1.2;
+    registerCanvasRedraw(canvasId, function() { drawHighOrderStep(canvasId, poles, K); },
+        { xMin: vxMin, xMax: vxMax, yMin: vyMin, yMax: vyMax });
+
     registerCanvasTooltip(canvasId, {
-        type: 'xy', pad, xMin: 0, xMax: tMax, yMin: _yMin, yMax: _yMax,
+        type: 'xy', pad, xMin: vxMin, xMax: vxMax, yMin: vyMin, yMax: vyMax,
         xLabel: 't', xUnit: 's', yLabel: 'c(t)',
         getData: function(tVal) {
             const idx = Math.round(tVal / dt);
@@ -3985,6 +4032,55 @@ const _canvasTooltipRegistry = {};
 const _canvasZoomState = {}; // { id: { zoom, panX, panY } }
 const _canvasMarkers = {}; // { id: [ { px, py, dataX, dataY, label, color, lineType } ] }
 // lineType: 'both' = point + crosshairs, 'h' = horizontal line only, 'v' = vertical line only
+
+// ===================== MATHEMATICAL ZOOM/PAN ENGINE =====================
+// Instead of CSS transform (which just scales the image like a screenshot),
+// this system redraws the chart with new axis bounds — like MATLAB/GeoGebra.
+const _canvasRedrawFn = {};    // { id: Function } — the draw function to call on zoom/pan
+const _canvasViewState = {};   // { id: { xMin, xMax, yMin, yMax, defaultBounds } }
+
+function registerCanvasRedraw(id, drawFn, bounds) {
+    _canvasRedrawFn[id] = drawFn;
+    const vs = _canvasViewState[id];
+    const isRedrawing = vs && vs._redrawing;
+    if (!vs || (!vs._userZoomed && !isRedrawing)) {
+        _canvasViewState[id] = {
+            xMin: bounds.xMin, xMax: bounds.xMax,
+            yMin: bounds.yMin, yMax: bounds.yMax,
+            defaultBounds: { xMin: bounds.xMin, xMax: bounds.xMax, yMin: bounds.yMin, yMax: bounds.yMax },
+            _userZoomed: false
+        };
+    } else if (!isRedrawing) {
+        // Update default bounds (data may have changed) but keep user's zoom
+        vs.defaultBounds = { xMin: bounds.xMin, xMax: bounds.xMax, yMin: bounds.yMin, yMax: bounds.yMax };
+    }
+}
+
+function _getViewBounds(id) {
+    return _canvasViewState[id] || null;
+}
+
+function _redrawCanvas(id) {
+    const fn = _canvasRedrawFn[id];
+    if (fn) {
+        // Temporarily prevent resetting view state during redraw
+        if (_canvasViewState[id]) _canvasViewState[id]._redrawing = true;
+        fn();
+        if (_canvasViewState[id]) _canvasViewState[id]._redrawing = false;
+    }
+}
+
+function _resetCanvasView(id) {
+    const vs = _canvasViewState[id];
+    if (vs && vs.defaultBounds) {
+        vs.xMin = vs.defaultBounds.xMin;
+        vs.xMax = vs.defaultBounds.xMax;
+        vs.yMin = vs.defaultBounds.yMin;
+        vs.yMax = vs.defaultBounds.yMax;
+        vs._userZoomed = false;
+        _redrawCanvas(id);
+    }
+}
 const MARKER_COLORS = [
     '#FF4081','#00BCD4','#FFEB3B','#76FF03','#FF6D00',
     '#E040FB','#00E5FF','#FFD740','#69F0AE','#FF3D00',
@@ -4117,12 +4213,56 @@ function _drawCanvasMarkers(id) {
 }
 
 const _canvasSnapshots = {}; // { id: ImageData } — snapshot before markers
+const _canvasDrawings = {}; // { id: [ { color, width, points: [{x,y}] } ] } — freehand strokes in data coords
+const _canvasDrawMode = {}; // { id: boolean }
+
+// Draw all freehand strokes for a canvas (in data coordinates → pixel)
+function _drawCanvasStrokes(id) {
+    const strokes = _canvasDrawings[id];
+    if (!strokes || strokes.length === 0) return;
+    const cv = document.getElementById(id);
+    if (!cv) return;
+    const cfg = _canvasTooltipRegistry[id];
+    if (!cfg) return;
+    const ctx = cv.getContext('2d');
+    const dpr = cv._hiDpiDpr || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const pad = cfg.pad || { l: 60, r: 20, t: 30, b: 40 };
+    const W = cv._cssW || cv.width / dpr;
+    const H = cv._cssH || cv.height / dpr;
+    const pw = W - pad.l - pad.r;
+    const ph = H - pad.t - pad.b;
+
+    // Clip to plot area
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(pad.l, pad.t, pw, ph);
+    ctx.clip();
+
+    strokes.forEach(function(stroke) {
+        if (stroke.points.length < 2) return;
+        ctx.strokeStyle = stroke.color;
+        ctx.lineWidth = stroke.width;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        for (let i = 0; i < stroke.points.length; i++) {
+            const p = _markerDataToPx(cfg, cv, stroke.points[i].x, stroke.points[i].y);
+            i === 0 ? ctx.moveTo(p.px, p.py) : ctx.lineTo(p.px, p.py);
+        }
+        ctx.stroke();
+    });
+
+    ctx.restore();
+}
 
 // Schedule marker redraw after current drawing cycle completes
 function _scheduleMarkerRedraw(id) {
     cancelAnimationFrame(window['_markerRAF_' + id]);
     window['_markerRAF_' + id] = requestAnimationFrame(function() {
-        // Save a clean snapshot (without markers) before drawing them
+        // Draw freehand strokes first (before snapshot)
+        _drawCanvasStrokes(id);
+        // Save a clean snapshot (with strokes but without markers) before drawing markers
         const cv = document.getElementById(id);
         if (cv) {
             const ctx = cv.getContext('2d');
@@ -4133,6 +4273,7 @@ function _scheduleMarkerRedraw(id) {
 }
 
 // Wrap a canvas in a zoom container and add zoom/pan controls
+// Uses MATHEMATICAL zoom: redraws the chart with new axis bounds (like MATLAB/GeoGebra)
 function _ensureZoomWrap(cv) {
     if (cv._zoomWrapped) return;
     cv._zoomWrapped = true;
@@ -4146,7 +4287,6 @@ function _ensureZoomWrap(cv) {
     wrap.style.margin = cv.style.margin || '';
     cv.parentNode.insertBefore(wrap, cv);
     wrap.appendChild(cv);
-    // Move some styles from canvas to wrapper
     cv.style.margin = '0';
 
     // Zoom + pan controls
@@ -4161,28 +4301,122 @@ function _ensureZoomWrap(cv) {
         '<button class="canvas-zoom-btn" data-action="right" style="font-size:12px;">&#9654;</button>' +
         '<button class="canvas-zoom-btn" data-action="reset" style="font-size:11px;">&#8634;</button>' +
         '<button class="canvas-zoom-btn" data-action="clearmarkers" style="font-size:9px;" title="Limpar marcadores">&#10005;</button>' +
-        '<button class="canvas-zoom-btn" data-action="fullscreen" style="font-size:12px;" title="Tela cheia">&#x26F6;</button>';
+        '<button class="canvas-zoom-btn" data-action="fullscreen" style="font-size:12px;" title="Tela cheia">&#x26F6;</button>' +
+        '<button class="canvas-zoom-btn" data-action="draw" title="Desenho livre">&#9998; Desenhar</button>';
     wrap.appendChild(controls);
 
-    function applyTransform() {
-        const s = _canvasZoomState[id];
-        cv.style.transform = `scale(${s.zoom}) translate(${s.panX}px, ${s.panY}px)`;
+    // Fullscreen: resize canvas proportionally to fill screen, then redraw
+    document.addEventListener('fullscreenchange', function() {
+        if (document.fullscreenElement === wrap) {
+            // Entering fullscreen — save original size
+            cv._origCssW = cv._cssW;
+            cv._origCssH = cv._cssH;
+            requestAnimationFrame(function() {
+                const screenW = window.innerWidth * 0.96;
+                const screenH = window.innerHeight * 0.92;
+                const origAspect = cv._origCssW / cv._origCssH;
+                const screenAspect = screenW / screenH;
+                let fsW, fsH;
+                if (origAspect > screenAspect) {
+                    // Width-limited
+                    fsW = Math.round(screenW);
+                    fsH = Math.round(screenW / origAspect);
+                } else {
+                    // Height-limited
+                    fsH = Math.round(screenH);
+                    fsW = Math.round(screenH * origAspect);
+                }
+                cv._cssW = fsW;
+                cv._cssH = fsH;
+                cv._hiDpiDpr = 0; // force re-init
+                _initHiDPI(cv);
+                _redrawCanvas(id);
+            });
+        } else if (cv._origCssW) {
+            // Exiting fullscreen — restore original size
+            cv._cssW = cv._origCssW;
+            cv._cssH = cv._origCssH;
+            cv._hiDpiDpr = 0; // force re-init
+            _initHiDPI(cv);
+            _redrawCanvas(id);
+        }
+    });
+
+    // Helper: get pixel-to-data coordinate for a cursor position
+    function _cursorToData(clientX, clientY) {
+        const cfg = _canvasTooltipRegistry[id];
+        const vs = _canvasViewState[id];
+        if (!cfg && !vs) return null;
+        const rect = cv.getBoundingClientRect();
+        const cssW = cv._cssW || rect.width;
+        const cssH = cv._cssH || rect.height;
+        const px = (clientX - rect.left) * (cssW / rect.width);
+        const py = (clientY - rect.top) * (cssH / rect.height);
+        const pad = (cfg && cfg.pad) || { l: 60, r: 20, t: 30, b: 40 };
+        const pw = cssW - pad.l - pad.r;
+        const ph = cssH - pad.t - pad.b;
+        // Fraction within plot area
+        const fx = (px - pad.l) / pw;
+        const fy = (py - pad.t) / ph;
+        return { fx, fy, px, py };
+    }
+
+    // Mathematical zoom: modifies axis bounds and redraws
+    function mathZoom(factor, centerFx, centerFy) {
+        const vs = _canvasViewState[id];
+        if (!vs) return;
+        const xRange = vs.xMax - vs.xMin;
+        const yRange = vs.yMax - vs.yMin;
+        // Data coords at cursor
+        const dataX = vs.xMin + centerFx * xRange;
+        const dataY = vs.yMax - centerFy * yRange; // inverted Y
+        // New range
+        const newXRange = xRange / factor;
+        const newYRange = yRange / factor;
+        // Keep cursor position fixed
+        vs.xMin = dataX - centerFx * newXRange;
+        vs.xMax = dataX + (1 - centerFx) * newXRange;
+        vs.yMin = dataY - (1 - centerFy) * newYRange;
+        vs.yMax = dataY + centerFy * newYRange;
+        vs._userZoomed = true;
+        _redrawCanvas(id);
+    }
+
+    // Mathematical pan: shifts axis bounds
+    function mathPan(dxFrac, dyFrac) {
+        const vs = _canvasViewState[id];
+        if (!vs) return;
+        const xRange = vs.xMax - vs.xMin;
+        const yRange = vs.yMax - vs.yMin;
+        vs.xMin -= dxFrac * xRange;
+        vs.xMax -= dxFrac * xRange;
+        vs.yMin += dyFrac * yRange; // inverted Y
+        vs.yMax += dyFrac * yRange;
+        vs._userZoomed = true;
+        _redrawCanvas(id);
+    }
+
+    // Debounce for smooth redraw during interaction
+    let _zoomRedrawTimer = null;
+    function debouncedRedraw() {
+        if (_zoomRedrawTimer) cancelAnimationFrame(_zoomRedrawTimer);
+        _zoomRedrawTimer = requestAnimationFrame(function() { _redrawCanvas(id); });
     }
 
     // Button clicks
-    const PAN_STEP = 30;
     controls.addEventListener('click', function(e) {
         const btn = e.target.closest('.canvas-zoom-btn');
         if (!btn) return;
-        const s = _canvasZoomState[id];
         const action = btn.dataset.action;
-        if (action === 'in')    { s.zoom = Math.min(s.zoom * 1.3, 10); }
-        if (action === 'out')   { s.zoom = Math.max(s.zoom / 1.3, 0.5); }
-        if (action === 'up')    { s.panY += PAN_STEP / s.zoom; }
-        if (action === 'down')  { s.panY -= PAN_STEP / s.zoom; }
-        if (action === 'left')  { s.panX += PAN_STEP / s.zoom; }
-        if (action === 'right') { s.panX -= PAN_STEP / s.zoom; }
-        if (action === 'reset') { s.zoom = 1; s.panX = 0; s.panY = 0; }
+        if (action === 'in')    { mathZoom(1.4, 0.5, 0.5); }
+        if (action === 'out')   { mathZoom(1 / 1.4, 0.5, 0.5); }
+        if (action === 'up')    { mathPan(0, 0.2); }
+        if (action === 'down')  { mathPan(0, -0.2); }
+        if (action === 'left')  { mathPan(0.2, 0); }
+        if (action === 'right') { mathPan(-0.2, 0); }
+        if (action === 'reset') {
+            _resetCanvasView(id);
+        }
         if (action === 'fullscreen') {
             if (document.fullscreenElement === wrap) {
                 document.exitFullscreen();
@@ -4191,93 +4425,202 @@ function _ensureZoomWrap(cv) {
             }
             return;
         }
+
         if (action === 'clearmarkers') {
             _canvasMarkers[id] = [];
-            // Restore clean snapshot (graph without markers)
-            if (_canvasSnapshots[id]) {
-                const ctx2 = cv.getContext('2d');
-                ctx2.putImageData(_canvasSnapshots[id], 0, 0);
-            }
+            _canvasDrawings[id] = [];
+            _redrawCanvas(id);
         }
-        applyTransform();
+        if (action === 'draw') {
+            _canvasDrawMode[id] = !_canvasDrawMode[id];
+            const drawBtn = controls.querySelector('[data-action="draw"]');
+            if (drawBtn) {
+                drawBtn.classList.toggle('active', !!_canvasDrawMode[id]);
+                drawBtn.innerHTML = _canvasDrawMode[id] ? '&#9998; Desenhando...' : '&#9998; Desenhar';
+            }
+            cv.style.cursor = _canvasDrawMode[id] ? 'crosshair' : '';
+        }
         e.stopPropagation();
     });
 
-    // Wheel zoom (centered on cursor)
+    // Wheel zoom (centered on cursor) — mathematical
     cv.addEventListener('wheel', function(e) {
         e.preventDefault();
-        const s = _canvasZoomState[id];
-        const rect = cv.getBoundingClientRect();
-        // Cursor position relative to canvas (in canvas coords before zoom)
-        const cx = (e.clientX - rect.left) / s.zoom;
-        const cy = (e.clientY - rect.top) / s.zoom;
-        const oldZoom = s.zoom;
-        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-        s.zoom = Math.max(0.5, Math.min(10, s.zoom * factor));
-        // Adjust pan so the point under the cursor stays fixed
-        s.panX += cx * (1 - s.zoom / oldZoom);
-        s.panY += cy * (1 - s.zoom / oldZoom);
-        applyTransform();
+        const vs = _canvasViewState[id];
+        if (!vs) return;
+        const coords = _cursorToData(e.clientX, e.clientY);
+        if (!coords) return;
+        const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
+        // Clamp fx/fy to plot area
+        const fx = Math.max(0, Math.min(1, coords.fx));
+        const fy = Math.max(0, Math.min(1, coords.fy));
+        const xRange = vs.xMax - vs.xMin;
+        const yRange = vs.yMax - vs.yMin;
+        const dataX = vs.xMin + fx * xRange;
+        const dataY = vs.yMax - fy * yRange;
+        const newXRange = xRange / factor;
+        const newYRange = yRange / factor;
+        vs.xMin = dataX - fx * newXRange;
+        vs.xMax = dataX + (1 - fx) * newXRange;
+        vs.yMin = dataY - (1 - fy) * newYRange;
+        vs.yMax = dataY + fy * newYRange;
+        vs._userZoomed = true;
+        debouncedRedraw();
     }, { passive: false });
 
-    // Pan via drag
-    let dragging = false, dragStartX, dragStartY, panStartX, panStartY;
+    // Pan via drag — mathematical (or draw mode)
+    let dragging = false, lastDragX, lastDragY;
+    let _drawingStroke = null; // current freehand stroke being drawn
+
+    // Convert client coords to data coords for drawing
+    function _clientToDataCoords(clientX, clientY) {
+        const cfg = _canvasTooltipRegistry[id];
+        const vs = _canvasViewState[id];
+        if (!cfg || !vs) return null;
+        const rect = cv.getBoundingClientRect();
+        const cssW = cv._cssW || rect.width;
+        const cssH = cv._cssH || rect.height;
+        const pad = cfg.pad || { l: 60, r: 20, t: 30, b: 40 };
+        const pw = cssW - pad.l - pad.r;
+        const ph = cssH - pad.t - pad.b;
+        const px = (clientX - rect.left) * (cssW / rect.width);
+        const py = (clientY - rect.top) * (cssH / rect.height);
+        const fx = (px - pad.l) / pw;
+        const fy = (py - pad.t) / ph;
+        const xRange = vs.xMax - vs.xMin;
+        const yRange = vs.yMax - vs.yMin;
+        return { x: vs.xMin + fx * xRange, y: vs.yMax - fy * yRange };
+    }
+
     cv.addEventListener('mousedown', function(e) {
-        const s = _canvasZoomState[id];
+        if (e.button !== 0) return;
+        if (_canvasDrawMode[id]) {
+            // Start freehand drawing
+            const pt = _clientToDataCoords(e.clientX, e.clientY);
+            if (!pt) return;
+            if (!_canvasDrawings[id]) _canvasDrawings[id] = [];
+            const drawColors = ['#FF4081','#00E5FF','#FFEB3B','#76FF03','#FF6D00','#E040FB','#18FFFF','#FFD740'];
+            const cIdx = _canvasDrawings[id].length % drawColors.length;
+            _drawingStroke = { color: drawColors[cIdx], width: 2.5, points: [pt] };
+            _canvasDrawings[id].push(_drawingStroke);
+            e.preventDefault();
+            return;
+        }
         dragging = true;
-        dragStartX = e.clientX; dragStartY = e.clientY;
-        panStartX = s.panX; panStartY = s.panY;
+        lastDragX = e.clientX;
+        lastDragY = e.clientY;
         cv.style.cursor = 'grabbing';
         e.preventDefault();
     });
     window.addEventListener('mousemove', function(e) {
+        if (_drawingStroke) {
+            // Add point to current freehand stroke
+            const pt = _clientToDataCoords(e.clientX, e.clientY);
+            if (pt) {
+                _drawingStroke.points.push(pt);
+                // Live draw: redraw strokes on top of snapshot
+                if (_canvasSnapshots[id]) {
+                    const ctx2 = cv.getContext('2d');
+                    ctx2.putImageData(_canvasSnapshots[id], 0, 0);
+                }
+                _drawCanvasStrokes(id);
+                _drawCanvasMarkers(id);
+            }
+            return;
+        }
         if (!dragging) return;
-        const s = _canvasZoomState[id];
-        s.panX = panStartX + (e.clientX - dragStartX) / s.zoom;
-        s.panY = panStartY + (e.clientY - dragStartY) / s.zoom;
-        applyTransform();
+        const vs = _canvasViewState[id];
+        if (!vs) return;
+        const rect = cv.getBoundingClientRect();
+        const cssW = cv._cssW || rect.width;
+        const cssH = cv._cssH || rect.height;
+        const pad = (_canvasTooltipRegistry[id] && _canvasTooltipRegistry[id].pad) || { l: 60, r: 20, t: 30, b: 40 };
+        const pw = cssW - pad.l - pad.r;
+        const ph = cssH - pad.t - pad.b;
+        const dxPx = e.clientX - lastDragX;
+        const dyPx = e.clientY - lastDragY;
+        const scaleX = (rect.width > 0) ? (cssW / rect.width) : 1;
+        const scaleY = (rect.height > 0) ? (cssH / rect.height) : 1;
+        const xRange = vs.xMax - vs.xMin;
+        const yRange = vs.yMax - vs.yMin;
+        vs.xMin -= (dxPx * scaleX / pw) * xRange;
+        vs.xMax -= (dxPx * scaleX / pw) * xRange;
+        vs.yMin -= (dyPx * scaleY / ph) * yRange;
+        vs.yMax -= (dyPx * scaleY / ph) * yRange;
+        vs._userZoomed = true;
+        lastDragX = e.clientX;
+        lastDragY = e.clientY;
+        debouncedRedraw();
     });
     window.addEventListener('mouseup', function() {
-        if (dragging) {
-            dragging = false;
-            cv.style.cursor = '';
+        if (_drawingStroke) {
+            _drawingStroke = null;
+            // Take a fresh snapshot with the stroke included
+            const ctx2 = cv.getContext('2d');
+            _canvasSnapshots[id] = ctx2.getImageData(0, 0, cv.width, cv.height);
+            return;
         }
+        if (dragging) { dragging = false; cv.style.cursor = _canvasDrawMode[id] ? 'crosshair' : ''; }
     });
 
-    // Touch: pinch-to-zoom (2 fingers) + pan (1 finger)
+    // Touch: pinch-to-zoom (2 fingers) + pan (1 finger) — mathematical
     let lastTouchDist = null, lastTouchX = null, lastTouchY = null;
+    let lastPinchCx = null, lastPinchCy = null;
     cv.addEventListener('touchstart', function(e) {
         if (e.touches.length === 2) {
             const dx = e.touches[0].clientX - e.touches[1].clientX;
             const dy = e.touches[0].clientY - e.touches[1].clientY;
             lastTouchDist = Math.sqrt(dx*dx + dy*dy);
+            lastPinchCx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+            lastPinchCy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         } else if (e.touches.length === 1) {
             lastTouchX = e.touches[0].clientX;
             lastTouchY = e.touches[0].clientY;
         }
     }, { passive: true });
     cv.addEventListener('touchmove', function(e) {
-        const s = _canvasZoomState[id];
+        const vs = _canvasViewState[id];
+        if (!vs) return;
         if (e.touches.length === 2 && lastTouchDist) {
             const dx = e.touches[0].clientX - e.touches[1].clientX;
             const dy = e.touches[0].clientY - e.touches[1].clientY;
             const dist = Math.sqrt(dx*dx + dy*dy);
-            s.zoom = Math.max(0.5, Math.min(10, s.zoom * (dist / lastTouchDist)));
-            applyTransform();
+            const factor = dist / lastTouchDist;
+            const coords = _cursorToData(lastPinchCx, lastPinchCy);
+            if (coords) {
+                const fx = Math.max(0, Math.min(1, coords.fx));
+                const fy = Math.max(0, Math.min(1, coords.fy));
+                mathZoom(factor, fx, fy);
+            }
             lastTouchDist = dist;
+            lastPinchCx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+            lastPinchCy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
             e.preventDefault();
         } else if (e.touches.length === 1 && lastTouchX !== null) {
-            const dx = e.touches[0].clientX - lastTouchX;
-            const dy = e.touches[0].clientY - lastTouchY;
-            s.panX += dx / s.zoom;
-            s.panY += dy / s.zoom;
-            applyTransform();
+            const rect = cv.getBoundingClientRect();
+            const cssW = cv._cssW || rect.width;
+            const cssH = cv._cssH || rect.height;
+            const pad = (_canvasTooltipRegistry[id] && _canvasTooltipRegistry[id].pad) || { l: 60, r: 20, t: 30, b: 40 };
+            const pw = cssW - pad.l - pad.r;
+            const ph = cssH - pad.t - pad.b;
+            const tdx = e.touches[0].clientX - lastTouchX;
+            const tdy = e.touches[0].clientY - lastTouchY;
+            const scaleX = (rect.width > 0) ? (cssW / rect.width) : 1;
+            const scaleY = (rect.height > 0) ? (cssH / rect.height) : 1;
+            const xRange = vs.xMax - vs.xMin;
+            const yRange = vs.yMax - vs.yMin;
+            vs.xMin -= (tdx * scaleX / pw) * xRange;
+            vs.xMax -= (tdx * scaleX / pw) * xRange;
+            vs.yMin -= (tdy * scaleY / ph) * yRange;
+            vs.yMax -= (tdy * scaleY / ph) * yRange;
+            vs._userZoomed = true;
             lastTouchX = e.touches[0].clientX;
             lastTouchY = e.touches[0].clientY;
+            debouncedRedraw();
             e.preventDefault();
         }
     }, { passive: false });
-    cv.addEventListener('touchend', function() { lastTouchDist = null; lastTouchX = null; lastTouchY = null; }, { passive: true });
+    cv.addEventListener('touchend', function() { lastTouchDist = null; lastTouchX = null; lastTouchY = null; lastPinchCx = null; lastPinchCy = null; }, { passive: true });
 
     // Double-click to place marker/lines
     // Plain dblclick = marker point + crosshairs
@@ -4454,32 +4797,45 @@ function registerCanvasTooltip(id, config) {
 
 // ==================== 1) RESPOSTA AO DEGRAU 2a ORDEM ====================
 function drawStepResponse(zeta, wn, os, ts2, tp) {
-    const r = getCtx('canvas_step');
+    const _canvasId = 'canvas_step';
+    const r = getCtx(_canvasId);
     if (!r || zeta === null || wn === null || wn <= 0) return;
     const { ctx, w, h } = r;
     const pad = { l: 60, r: 20, t: 30, b: 40 };
     const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
 
-    // Compute time range (guard against zeta=0 causing Infinity)
-    let tMax = ts2 && isFinite(ts2) ? ts2 * 1.6 : (zeta > 0 ? 8 / (zeta * wn) : 8 * Math.PI / wn);
-    if (!isFinite(tMax) || tMax <= 0) tMax = 10;
-    const yMax = os ? Math.max(1.6, 1 + os / 100 + 0.15) : 1.6;
-    const dt = tMax / 500;
+    // Compute default ranges
+    let defTMax = ts2 && isFinite(ts2) ? ts2 * 1.6 : (zeta > 0 ? 8 / (zeta * wn) : 8 * Math.PI / wn);
+    if (!isFinite(defTMax) || defTMax <= 0) defTMax = 10;
+    const defYMax = os ? Math.max(1.6, 1 + os / 100 + 0.15) : 1.6;
+
+    // Use view state if user has zoomed/panned, otherwise use defaults
+    const vs = _canvasViewState[_canvasId];
+    let xMin, xMax, yMin, yMax;
+    if (vs && vs._userZoomed) {
+        xMin = vs.xMin; xMax = vs.xMax; yMin = vs.yMin; yMax = vs.yMax;
+    } else {
+        xMin = 0; xMax = defTMax; yMin = 0; yMax = defYMax;
+    }
+    const tMax = xMax; // alias for readability
+    const xRange = xMax - xMin;
+    const yRange = yMax - yMin;
+    const dt = xRange / 500;
     if (!isFinite(dt) || dt <= 0) return;
 
-    // Draw grid
+    // Draw grid with dynamic labels
     ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
     for (let i = 0; i <= 5; i++) {
         const x = pad.l + (i / 5) * pw;
         ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
         ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
-        ctx.fillText(fmt(i * tMax / 5, 2) + 's', x, h - pad.b + 16);
+        ctx.fillText(fmt(xMin + i * xRange / 5, 2) + 's', x, h - pad.b + 16);
     }
     for (let i = 0; i <= 4; i++) {
         const y = pad.t + ph - (i / 4) * ph;
         ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
         ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'right';
-        ctx.fillText(fmt(i * yMax / 4, 2), pad.l - 6, y + 4);
+        ctx.fillText(fmt(yMin + i * yRange / 4, 2), pad.l - 6, y + 4);
     }
 
     // Axes
@@ -4492,24 +4848,33 @@ function drawStepResponse(zeta, wn, os, ts2, tp) {
     ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
     ctx.fillText('c(t)', 0, 0); ctx.restore();
 
-    // Reference line y=1
-    const y1 = pad.t + ph - (1 / yMax) * ph;
-    ctx.strokeStyle = '#95a5a6'; ctx.lineWidth = 1; ctx.setLineDash([6, 4]);
-    ctx.beginPath(); ctx.moveTo(pad.l, y1); ctx.lineTo(pad.l + pw, y1); ctx.stroke();
-    ctx.setLineDash([]);
+    // Coordinate converters using current view bounds
+    const toX = t => pad.l + ((t - xMin) / xRange) * pw;
+    const toY = v => pad.t + ph - ((v - yMin) / yRange) * ph;
 
-    // 2% band
-    if (ts2) {
-        ctx.fillStyle = 'rgba(39,174,96,0.07)';
-        const y_up = pad.t + ph - (1.02 / yMax) * ph;
-        const y_dn = pad.t + ph - (0.98 / yMax) * ph;
-        ctx.fillRect(pad.l, y_up, pw, y_dn - y_up);
+    // Reference line y=1 (only if in view)
+    if (1 >= yMin && 1 <= yMax) {
+        ctx.strokeStyle = '#95a5a6'; ctx.lineWidth = 1; ctx.setLineDash([6, 4]);
+        ctx.beginPath(); ctx.moveTo(pad.l, toY(1)); ctx.lineTo(pad.l + pw, toY(1)); ctx.stroke();
+        ctx.setLineDash([]);
     }
 
-    const toX = t => pad.l + (t / tMax) * pw;
-    const toY = v => pad.t + ph - (v / yMax) * ph;
+    // 2% band (only if in view)
+    if (ts2 && 0.98 <= yMax && 1.02 >= yMin) {
+        ctx.fillStyle = 'rgba(39,174,96,0.07)';
+        const y_up = toY(1.02);
+        const y_dn = toY(0.98);
+        ctx.fillRect(pad.l, Math.max(pad.t, y_up), pw, Math.min(pad.t + ph, y_dn) - Math.max(pad.t, y_up));
+    }
+
+    // Clip to plot area so curves don't overflow
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(pad.l, pad.t, pw, ph);
+    ctx.clip();
 
     // Step response: c(t) = 1 - (e^(-zwn*t)/sqrt(1-z^2)) * sin(wd*t + beta)
+    const tStart = Math.max(0, xMin); // response starts at t=0
     if (zeta < 1 && zeta >= 0) {
         const wd = wn * Math.sqrt(1 - zeta ** 2);
         const beta = Math.acos(zeta);
@@ -4517,17 +4882,19 @@ function drawStepResponse(zeta, wn, os, ts2, tp) {
         // Envelope curves
         ctx.strokeStyle = C.envelope; ctx.lineWidth = 0.8; ctx.setLineDash([4, 4]);
         ctx.beginPath();
-        for (let t = 0; t <= tMax; t += dt) {
+        let first = true;
+        for (let t = tStart; t <= xMax; t += dt) {
             const env = 1 + Math.exp(-zeta * wn * t) / Math.sqrt(1 - zeta ** 2);
             const x = toX(t), y = toY(env);
-            t === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            first ? (ctx.moveTo(x, y), first = false) : ctx.lineTo(x, y);
         }
         ctx.stroke();
         ctx.beginPath();
-        for (let t = 0; t <= tMax; t += dt) {
+        first = true;
+        for (let t = tStart; t <= xMax; t += dt) {
             const env = 1 - Math.exp(-zeta * wn * t) / Math.sqrt(1 - zeta ** 2);
             const x = toX(t), y = toY(env);
-            t === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            first ? (ctx.moveTo(x, y), first = false) : ctx.lineTo(x, y);
         }
         ctx.stroke();
         ctx.setLineDash([]);
@@ -4535,52 +4902,51 @@ function drawStepResponse(zeta, wn, os, ts2, tp) {
         // Main curve
         ctx.strokeStyle = C.line; ctx.lineWidth = 2.5;
         ctx.beginPath();
-        for (let t = 0; t <= tMax; t += dt) {
+        first = true;
+        for (let t = tStart; t <= xMax; t += dt) {
             const ct = 1 - (Math.exp(-zeta * wn * t) / Math.sqrt(1 - zeta ** 2)) * Math.sin(wd * t + beta);
-            const x = toX(t), y = toY(Math.max(0, ct));
-            t === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            const x = toX(t), y = toY(ct);
+            first ? (ctx.moveTo(x, y), first = false) : ctx.lineTo(x, y);
         }
         ctx.stroke();
 
         // Fill under curve
         ctx.fillStyle = C.fill;
-        ctx.beginPath(); ctx.moveTo(toX(0), toY(0));
-        for (let t = 0; t <= tMax; t += dt) {
+        ctx.beginPath(); ctx.moveTo(toX(tStart), toY(yMin));
+        for (let t = tStart; t <= xMax; t += dt) {
             const ct = 1 - (Math.exp(-zeta * wn * t) / Math.sqrt(1 - zeta ** 2)) * Math.sin(wd * t + beta);
-            ctx.lineTo(toX(t), toY(Math.max(0, ct)));
+            ctx.lineTo(toX(t), toY(ct));
         }
-        ctx.lineTo(toX(tMax), toY(0)); ctx.closePath(); ctx.fill();
+        ctx.lineTo(toX(xMax), toY(yMin)); ctx.closePath(); ctx.fill();
 
-        // Annotations
+        // Annotations (only if in current view)
         ctx.font = '10px Segoe UI'; ctx.fillStyle = C.ann;
-        if (tp) {
+        if (tp && tp >= xMin && tp <= xMax) {
             const ctp = 1 - (Math.exp(-zeta * wn * tp) / Math.sqrt(1 - zeta ** 2)) * Math.sin(wd * tp + beta);
-            // tp line
             ctx.strokeStyle = C.line2; ctx.lineWidth = 0.8; ctx.setLineDash([3, 3]);
-            ctx.beginPath(); ctx.moveTo(toX(tp), toY(0)); ctx.lineTo(toX(tp), toY(ctp)); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(toX(tp), toY(yMin)); ctx.lineTo(toX(tp), toY(ctp)); ctx.stroke();
             ctx.setLineDash([]);
-            // tp dot
             ctx.beginPath(); ctx.arc(toX(tp), toY(ctp), 4, 0, Math.PI * 2); ctx.fillStyle = C.line2; ctx.fill();
             ctx.fillStyle = C.ann; ctx.textAlign = 'center';
-            ctx.fillText('tp=' + fmt(tp, 2) + 's', toX(tp), toY(0) - 6);
-            // OS% annotation
+            ctx.fillText('tp=' + fmt(tp, 2) + 's', toX(tp), toY(yMin) - 6);
             if (os) {
                 ctx.fillStyle = C.line2;
                 ctx.fillText('OS=' + fmt(os, 1) + '%', toX(tp) + 40, toY(ctp) - 6);
             }
         }
-        if (ts2) {
+        if (ts2 && ts2 >= xMin && ts2 <= xMax) {
             ctx.strokeStyle = C.line3; ctx.lineWidth = 0.8; ctx.setLineDash([3, 3]);
-            ctx.beginPath(); ctx.moveTo(toX(ts2), toY(0)); ctx.lineTo(toX(ts2), toY(1)); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(toX(ts2), toY(yMin)); ctx.lineTo(toX(ts2), toY(1)); ctx.stroke();
             ctx.setLineDash([]);
             ctx.fillStyle = C.line3; ctx.textAlign = 'center';
-            ctx.fillText('ts=' + fmt(ts2, 2) + 's', toX(ts2), toY(0) - 6);
+            ctx.fillText('ts=' + fmt(ts2, 2) + 's', toX(ts2), toY(yMin) - 6);
         }
     } else if (zeta >= 1) {
         // Overdamped or critically damped
         ctx.strokeStyle = C.line; ctx.lineWidth = 2.5;
         ctx.beginPath();
-        for (let t = 0; t <= tMax; t += dt) {
+        let first = true;
+        for (let t = tStart; t <= xMax; t += dt) {
             let ct;
             if (Math.abs(zeta - 1) < 0.001) {
                 ct = 1 - (1 + wn * t) * Math.exp(-wn * t);
@@ -4589,16 +4955,23 @@ function drawStepResponse(zeta, wn, os, ts2, tp) {
                 const s2 = (-zeta - Math.sqrt(zeta ** 2 - 1)) * wn;
                 ct = 1 + (s1 * Math.exp(s2 * t) - s2 * Math.exp(s1 * t)) / (s2 - s1);
             }
-            const x = toX(t), y = toY(Math.max(0, Math.min(ct, yMax)));
-            t === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            const x = toX(t), y = toY(ct);
+            first ? (ctx.moveTo(x, y), first = false) : ctx.lineTo(x, y);
         }
         ctx.stroke();
     }
 
+    // Restore clip
+    ctx.restore();
+
+    // Register redraw function for mathematical zoom
+    registerCanvasRedraw(_canvasId, function() { drawStepResponse(zeta, wn, os, ts2, tp); },
+        { xMin: xMin, xMax: xMax, yMin: yMin, yMax: yMax });
+
     // Register interactive tooltip
-    registerCanvasTooltip('canvas_step', {
+    registerCanvasTooltip(_canvasId, {
         type: 'xy', pad,
-        xMin: 0, xMax: tMax, yMin: 0, yMax: yMax,
+        xMin: xMin, xMax: xMax, yMin: yMin, yMax: yMax,
         xLabel: 't', xUnit: 's', yLabel: 'c(t)',
         getData: function(tVal) {
             if (tVal < 0 || tVal > tMax) return [];
@@ -4625,50 +4998,89 @@ function drawSPlane(id, poles, title) {
     const r = getCtx(id);
     if (!r || !poles || poles.length === 0) return;
     const { ctx, w, h } = r;
-    const cx = w / 2, cy = h / 2;
+    const plotPad = { l: 40, r: 10, t: 20, b: 20 };
+    const pw = w - plotPad.l - plotPad.r;
+    const ph = h - plotPad.t - plotPad.b;
 
-    // Auto-scale
-    let maxR = 1;
-    poles.forEach(p => { maxR = Math.max(maxR, Math.abs(p.re) * 1.4, Math.abs(p.im) * 1.4); });
-    const scale = Math.min(cx - 40, cy - 40) / maxR;
+    // Auto-scale: compute default bounds from poles
+    let defMaxR = 1;
+    poles.forEach(p => { defMaxR = Math.max(defMaxR, Math.abs(p.re) * 1.4, Math.abs(p.im) * 1.4); });
 
-    const toX = v => cx + v * scale;
-    const toY = v => cy - v * scale;
+    // Use view state if user has zoomed
+    const vs = _canvasViewState[id];
+    let xMin, xMax, yMin, yMax;
+    if (vs && vs._userZoomed) {
+        xMin = vs.xMin; xMax = vs.xMax; yMin = vs.yMin; yMax = vs.yMax;
+    } else {
+        xMin = -defMaxR; xMax = defMaxR; yMin = -defMaxR; yMax = defMaxR;
+    }
+    const xRange = xMax - xMin, yRange = yMax - yMin;
+
+    const toX = v => plotPad.l + ((v - xMin) / xRange) * pw;
+    const toY = v => plotPad.t + ph - ((v - yMin) / yRange) * ph;
+
+    // Pixel position of origin
+    const cx = toX(0), cy = toY(0);
 
     // Grid
     ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
-    const step = Math.pow(10, Math.floor(Math.log10(maxR)));
-    for (let v = -maxR; v <= maxR; v += step) {
-        ctx.beginPath(); ctx.moveTo(toX(v), 30); ctx.lineTo(toX(v), h - 10); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(40, toY(v)); ctx.lineTo(w - 10, toY(v)); ctx.stroke();
+    const gridRange = Math.max(xRange, yRange);
+    const step = Math.pow(10, Math.floor(Math.log10(gridRange / 2)));
+    const gridStep = gridRange / step > 10 ? step * 2 : step;
+    for (let v = Math.ceil(xMin / gridStep) * gridStep; v <= xMax; v += gridStep) {
+        ctx.beginPath(); ctx.moveTo(toX(v), plotPad.t); ctx.lineTo(toX(v), plotPad.t + ph); ctx.stroke();
+        if (Math.abs(v) > gridStep * 0.01) {
+            ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'center';
+            ctx.fillText(fmt(v, 2), toX(v), plotPad.t + ph + 13);
+        }
+    }
+    for (let v = Math.ceil(yMin / gridStep) * gridStep; v <= yMax; v += gridStep) {
+        ctx.beginPath(); ctx.moveTo(plotPad.l, toY(v)); ctx.lineTo(plotPad.l + pw, toY(v)); ctx.stroke();
+        if (Math.abs(v) > gridStep * 0.01) {
+            ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'right';
+            ctx.fillText(fmt(v, 2), plotPad.l - 4, toY(v) + 3);
+        }
     }
 
-    // Axes
+    // Shade stable region (Re < 0)
+    if (xMin < 0) {
+        ctx.fillStyle = C.stable;
+        ctx.fillRect(plotPad.l, plotPad.t, Math.min(pw, toX(0) - plotPad.l), ph);
+    }
+    // Shade unstable region (Re >= 0)
+    if (xMax > 0) {
+        const x0 = Math.max(plotPad.l, toX(0));
+        ctx.fillStyle = C.unstable;
+        ctx.fillRect(x0, plotPad.t, plotPad.l + pw - x0, ph);
+    }
+
+    // Axes (draw at origin if visible)
     ctx.strokeStyle = C.axis; ctx.lineWidth = 1.2;
-    ctx.beginPath(); ctx.moveTo(30, cy); ctx.lineTo(w - 10, cy); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx, 10); ctx.lineTo(cx, h - 10); ctx.stroke();
-
-    // Shade stable region
-    ctx.fillStyle = C.stable;
-    ctx.fillRect(30, 10, cx - 30, h - 20);
-
-    // Shade unstable region
-    ctx.fillStyle = C.unstable;
-    ctx.fillRect(cx, 10, w - cx - 10, h - 20);
-
-    // Re-draw axes on top
-    ctx.strokeStyle = C.axis; ctx.lineWidth = 1.2;
-    ctx.beginPath(); ctx.moveTo(30, cy); ctx.lineTo(w - 10, cy); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx, 10); ctx.lineTo(cx, h - 10); ctx.stroke();
+    if (0 >= xMin && 0 <= xMax) {
+        ctx.beginPath(); ctx.moveTo(cx, plotPad.t); ctx.lineTo(cx, plotPad.t + ph); ctx.stroke();
+    }
+    if (0 >= yMin && 0 <= yMax) {
+        ctx.beginPath(); ctx.moveTo(plotPad.l, cy); ctx.lineTo(plotPad.l + pw, cy); ctx.stroke();
+    }
 
     // Labels
     ctx.fillStyle = C.text; ctx.font = '11px Segoe UI'; ctx.textAlign = 'center';
-    ctx.fillText('Re(s)', w - 30, cy - 8);
-    ctx.fillText('Im(s)', cx + 20, 18);
-    ctx.fillStyle = '#27ae60'; ctx.font = '9px Segoe UI';
-    ctx.fillText('SPE (estavel)', cx / 2 + 15, 24);
-    ctx.fillStyle = '#e74c3c';
-    ctx.fillText('SPD (instavel)', cx + (w - cx) / 2, 24);
+    ctx.fillText('Re(s)', plotPad.l + pw - 20, Math.max(plotPad.t + 14, Math.min(plotPad.t + ph - 4, cy - 8)));
+    ctx.fillText('Im(s)', Math.min(plotPad.l + pw - 10, Math.max(plotPad.l + 20, cx + 20)), plotPad.t + 14);
+    if (xMin < 0) {
+        ctx.fillStyle = '#27ae60'; ctx.font = '9px Segoe UI';
+        const lx = Math.max(plotPad.l + 30, (plotPad.l + Math.min(toX(0), plotPad.l + pw)) / 2);
+        ctx.fillText('SPE', lx, plotPad.t + 14);
+    }
+    if (xMax > 0) {
+        ctx.fillStyle = '#e74c3c'; ctx.font = '9px Segoe UI';
+        const rx = Math.min(plotPad.l + pw - 20, (Math.max(toX(0), plotPad.l) + plotPad.l + pw) / 2);
+        ctx.fillText('SPD', rx, plotPad.t + 14);
+    }
+
+    // Clip to plot area for poles
+    ctx.save();
+    ctx.beginPath(); ctx.rect(plotPad.l, plotPad.t, pw, ph); ctx.clip();
 
     // Draw poles (X marks)
     poles.forEach(p => {
@@ -4683,11 +5095,18 @@ function drawSPlane(id, poles, title) {
         }
     });
 
-    // Title
-    if (title) { ctx.fillStyle = C.text; ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center'; ctx.fillText(title, cx, h - 4); }
+    ctx.restore(); // end clip
 
-    // Register interactive tooltip
-    registerCanvasTooltip(id, { type: 'splane', pad: {l:30,r:10,t:10,b:10}, cx, cy, scale,
+    // Title
+    if (title) { ctx.fillStyle = C.text; ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center'; ctx.fillText(title, plotPad.l + pw / 2, h - 4); }
+
+    // Register redraw for mathematical zoom
+    registerCanvasRedraw(id, function() { drawSPlane(id, poles, title); },
+        { xMin: xMin, xMax: xMax, yMin: yMin, yMax: yMax });
+
+    // For backward compatibility with tooltip system, compute scale from bounds
+    const legacyScale = pw / xRange;
+    registerCanvasTooltip(id, { type: 'splane', pad: plotPad, cx, cy, scale: legacyScale,
         getData: function(re, im) {
             const nearest = poles.reduce((best, p) => {
                 const d = Math.hypot(p.re - re, p.im - im);
@@ -4705,24 +5124,48 @@ function drawSPlane(id, poles, title) {
 function drawBodePlots(zeta, wn) {
     if (zeta === null || wn === null || zeta <= 0 || wn <= 0 || !isFinite(zeta) || !isFinite(wn)) return;
 
-    // Magnitude plot
     const r1 = getCtx('canvas_bode_mag');
     const r2 = getCtx('canvas_bode_phase');
     if (!r1 || !r2) return;
 
-    const wMin = wn / 100, wMax = wn * 100;
-    const logMin = Math.log10(wMin), logMax = Math.log10(wMax);
+    const defWMin = wn / 100, defWMax = wn * 100;
+    const defLogMin = Math.log10(defWMin), defLogMax = Math.log10(defWMax);
     const pad = { l: 60, r: 20, t: 20, b: 35 };
 
-    function drawBode(r, getY, yMin, yMax, yLabel, unitLabel) {
+    // Magnitude: |G(jw)| = wn^2 / sqrt((wn^2-w^2)^2 + (2*z*wn*w)^2)
+    const getMag = w => {
+        const num = wn ** 2;
+        const d1 = wn ** 2 - w ** 2;
+        const d2 = 2 * zeta * wn * w;
+        return 20 * Math.log10(num / Math.sqrt(d1 ** 2 + d2 ** 2));
+    };
+    // Phase: angle = -atan2(2*z*wn*w, wn^2-w^2)
+    const getPhase = w => {
+        const d1 = wn ** 2 - w ** 2;
+        const d2 = 2 * zeta * wn * w;
+        return -Math.atan2(d2, d1) * (180 / Math.PI);
+    };
+
+    function drawBode(canvasId, r, getY, defYMin, defYMax, yLabel, unitLabel) {
         const { ctx, w, h } = r;
         const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
-        const toX = logW => pad.l + ((logW - logMin) / (logMax - logMin)) * pw;
-        const toY = v => pad.t + ph - ((v - yMin) / (yMax - yMin)) * ph;
+
+        // Use view state if user has zoomed
+        const vs = _canvasViewState[canvasId];
+        let xMin, xMax, yMin, yMax;
+        if (vs && vs._userZoomed) {
+            xMin = vs.xMin; xMax = vs.xMax; yMin = vs.yMin; yMax = vs.yMax;
+        } else {
+            xMin = defLogMin; xMax = defLogMax; yMin = defYMin; yMax = defYMax;
+        }
+        const xRange = xMax - xMin, yRange = yMax - yMin;
+
+        const toX = logW => pad.l + ((logW - xMin) / xRange) * pw;
+        const toY = v => pad.t + ph - ((v - yMin) / yRange) * ph;
 
         // Grid
         ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
-        for (let lg = Math.ceil(logMin); lg <= Math.floor(logMax); lg++) {
+        for (let lg = Math.ceil(xMin); lg <= Math.floor(xMax); lg++) {
             const x = toX(lg);
             ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
             ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'center';
@@ -4730,7 +5173,7 @@ function drawBodePlots(zeta, wn) {
         }
         const ySteps = 5;
         for (let i = 0; i <= ySteps; i++) {
-            const yv = yMin + (i / ySteps) * (yMax - yMin);
+            const yv = yMin + (i / ySteps) * yRange;
             const y = toY(yv);
             ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
             ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'right';
@@ -4753,54 +5196,64 @@ function drawBodePlots(zeta, wn) {
             ctx.setLineDash([]);
         }
 
+        // Clip to plot area
+        ctx.save();
+        ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
+
         // Curve
         ctx.strokeStyle = C.line; ctx.lineWidth = 2;
         ctx.beginPath();
-        const N = 200;
+        const N = 300;
         for (let i = 0; i <= N; i++) {
-            const logW = logMin + (i / N) * (logMax - logMin);
+            const logW = xMin + (i / N) * xRange;
             const w = Math.pow(10, logW);
             const y = getY(w);
-            const px = toX(logW), py = toY(Math.max(yMin, Math.min(yMax, y)));
+            const px = toX(logW), py = toY(y);
             i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
         }
         ctx.stroke();
 
         // wn marker
-        ctx.strokeStyle = C.ann; ctx.lineWidth = 0.8; ctx.setLineDash([3, 3]);
-        ctx.beginPath(); ctx.moveTo(toX(Math.log10(wn)), pad.t); ctx.lineTo(toX(Math.log10(wn)), pad.t + ph); ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = C.ann; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
-        ctx.fillText('wn', toX(Math.log10(wn)), pad.t - 4);
+        const logWn = Math.log10(wn);
+        if (logWn >= xMin && logWn <= xMax) {
+            ctx.strokeStyle = C.ann; ctx.lineWidth = 0.8; ctx.setLineDash([3, 3]);
+            ctx.beginPath(); ctx.moveTo(toX(logWn), pad.t); ctx.lineTo(toX(logWn), pad.t + ph); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = C.ann; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
+            ctx.fillText('wn', toX(logWn), pad.t - 4);
+        }
+
+        ctx.restore();
 
         // Axis labels
         ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
         ctx.fillText('w (rad/s)', pad.l + pw / 2, h - 2);
         ctx.save(); ctx.translate(12, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
         ctx.fillText(unitLabel, 0, 0); ctx.restore();
+
+        // Register redraw and tooltip
+        registerCanvasRedraw(canvasId, function() { drawBodePlots(zeta, wn); },
+            { xMin, xMax, yMin, yMax });
+        registerCanvasTooltip(canvasId, {
+            type: 'bode', pad, logXMin: xMin, logXMax: xMax, yMin, yMax,
+            yLabel: unitLabel, yUnit: yLabel === 'phase' ? '°' : 'dB',
+            getData: function(w) {
+                const val = getY(w);
+                const lbl = yLabel === 'phase' ? '∠G(jω)' : '|G(jω)|';
+                const unit = yLabel === 'phase' ? '°' : ' dB';
+                return [{ label: lbl, value: fmt(val, 2) + unit, color: yLabel === 'phase' ? '#f7d07e' : '#7ec8f7' }];
+            }
+        });
     }
 
-    // Magnitude: |G(jw)| = wn^2 / sqrt((wn^2-w^2)^2 + (2*z*wn*w)^2)
-    const getMag = w => {
-        const num = wn ** 2;
-        const d1 = wn ** 2 - w ** 2;
-        const d2 = 2 * zeta * wn * w;
-        return 20 * Math.log10(num / Math.sqrt(d1 ** 2 + d2 ** 2));
-    };
-    drawBode(r1, getMag, -60, 40, 'mag', '|G| (dB)');
-
-    // Phase: angle = -atan2(2*z*wn*w, wn^2-w^2)
-    const getPhase = w => {
-        const d1 = wn ** 2 - w ** 2;
-        const d2 = 2 * zeta * wn * w;
-        return -Math.atan2(d2, d1) * (180 / Math.PI);
-    };
-    drawBode(r2, getPhase, -200, 10, 'phase', 'Fase (graus)');
+    drawBode('canvas_bode_mag', r1, getMag, -60, 40, 'mag', '|G| (dB)');
+    drawBode('canvas_bode_phase', r2, getPhase, -200, 10, 'phase', 'Fase (graus)');
 
     // Calculate crossovers and fill Bode results automatically
+    const logMin = defLogMin, logMax = defLogMax;
     const N2 = 400;
     let wgc = null, phaseAtGc = null, wpc = null, magAtPc = null;
-    let prevMag = getMag(wMin), prevPh = getPhase(wMin);
+    let prevMag = getMag(defWMin), prevPh = getPhase(defWMin);
     for (let i = 1; i <= N2; i++) {
         const logW = logMin + (i / N2) * (logMax - logMin);
         const w = Math.pow(10, logW);
@@ -4819,56 +5272,48 @@ function drawBodePlots(zeta, wn) {
         }
         prevMag = mag; prevPh = ph;
     }
-    // Fill input fields with crossover data
     if (magAtPc !== null) document.getElementById('bode_mag_pc').value = fmt(magAtPc, 4);
     if (phaseAtGc !== null) document.getElementById('bode_phase_gc').value = fmt(phaseAtGc, 4);
     calcBode();
-
-    // Register interactive tooltip for Bode plots
-    registerCanvasTooltip('canvas_bode_mag', {
-        type: 'bode', pad, logXMin: logMin, logXMax: logMax, yMin: -60, yMax: 40,
-        yLabel: '|G|', yUnit: 'dB',
-        getData: function(w) {
-            const mag = getMag(w);
-            return [{ label: '|G(jω)|', value: fmt(mag, 2) + ' dB', color: '#7ec8f7' }];
-        }
-    });
-    registerCanvasTooltip('canvas_bode_phase', {
-        type: 'bode', pad, logXMin: logMin, logXMax: logMax, yMin: -200, yMax: 10,
-        yLabel: 'Fase', yUnit: '°',
-        getData: function(w) {
-            const ph = getPhase(w);
-            return [{ label: '∠G(jω)', value: fmt(ph, 2) + '°', color: '#f7d07e' }];
-        }
-    });
 }
 
 // ==================== 4) ERRO - RESPOSTA AO DEGRAU ====================
 function drawErroResponse(tipo, K) {
-    const r = getCtx('canvas_erro');
+    const _canvasId = 'canvas_erro';
+    const r = getCtx(_canvasId);
     if (!r || tipo === null || K === null) return;
     const { ctx, w, h } = r;
     const pad = { l: 60, r: 20, t: 20, b: 35 };
     const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
 
-    // Simulate simple system: type 0 -> K/(s+1+K), type 1 -> K/(s^2+s+K), type 2 -> K/(s^3+s^2+s+K)
-    const tMax = 10;
-    const toX = t => pad.l + (t / tMax) * pw;
-    const toY = v => pad.t + ph - (v / 1.8) * ph;
+    const defXMax = 10, defYMax = 1.8;
+    const vs = _canvasViewState[_canvasId];
+    let xMin, xMax, yMin, yMax;
+    if (vs && vs._userZoomed) {
+        xMin = vs.xMin; xMax = vs.xMax; yMin = vs.yMin; yMax = vs.yMax;
+    } else {
+        xMin = 0; xMax = defXMax; yMin = 0; yMax = defYMax;
+    }
+    const xRange = xMax - xMin, yRange = yMax - yMin;
+
+    const toX = t => pad.l + ((t - xMin) / xRange) * pw;
+    const toY = v => pad.t + ph - ((v - yMin) / yRange) * ph;
 
     // Grid
     ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
     for (let i = 0; i <= 5; i++) {
+        const xv = xMin + (i / 5) * xRange;
         const x = pad.l + (i / 5) * pw;
         ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
         ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
-        ctx.fillText(fmt(i * tMax / 5, 1) + 's', x, h - pad.b + 14);
+        ctx.fillText(fmt(xv, 1) + 's', x, h - pad.b + 14);
     }
     for (let i = 0; i <= 4; i++) {
+        const yv = yMin + (i / 4) * yRange;
         const y = pad.t + ph - (i / 4) * ph;
         ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
         ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'right';
-        ctx.fillText(fmt(i * 1.8 / 4, 2), pad.l - 6, y + 4);
+        ctx.fillText(fmt(yv, 2), pad.l - 6, y + 4);
     }
 
     // Axes
@@ -4876,21 +5321,29 @@ function drawErroResponse(tipo, K) {
     ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph); ctx.stroke();
 
     // Reference input (step = 1)
-    ctx.strokeStyle = '#95a5a6'; ctx.lineWidth = 1; ctx.setLineDash([5, 4]);
-    ctx.beginPath(); ctx.moveTo(toX(0), toY(1)); ctx.lineTo(toX(tMax), toY(1)); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#95a5a6'; ctx.font = '10px Segoe UI'; ctx.textAlign = 'left';
-    ctx.fillText('Referencia = 1', toX(tMax) - 80, toY(1) - 6);
+    if (1 >= yMin && 1 <= yMax) {
+        ctx.strokeStyle = '#95a5a6'; ctx.lineWidth = 1; ctx.setLineDash([5, 4]);
+        ctx.beginPath(); ctx.moveTo(pad.l, toY(1)); ctx.lineTo(pad.l + pw, toY(1)); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#95a5a6'; ctx.font = '10px Segoe UI'; ctx.textAlign = 'left';
+        ctx.fillText('Referencia = 1', pad.l + pw - 80, toY(1) - 6);
+    }
+
+    // Clip to plot area
+    ctx.save();
+    ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
 
     // Output curve (simple model)
-    const dt = 0.02;
+    const dt = xRange / 500;
     let finalVal;
     if (tipo === 0) finalVal = K / (1 + K);
     else finalVal = 1;
 
     ctx.strokeStyle = C.line; ctx.lineWidth = 2.5;
     ctx.beginPath();
-    for (let t = 0; t <= tMax; t += dt) {
+    const tStart = Math.max(0, xMin);
+    let first = true;
+    for (let t = tStart; t <= xMax; t += dt) {
         let ct;
         if (tipo === 0) {
             ct = finalVal * (1 - Math.exp(-(1 + K) * t));
@@ -4909,26 +5362,41 @@ function drawErroResponse(tipo, K) {
             const beta = Math.acos(z);
             ct = 1 - (Math.exp(-z * wn * t) / Math.sqrt(1 - z * z)) * Math.sin(wd * t + beta);
         }
-        ct = Math.max(0, Math.min(ct, 1.8));
         const px = toX(t), py = toY(ct);
-        t === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        first ? (ctx.moveTo(px, py), first = false) : ctx.lineTo(px, py);
     }
     ctx.stroke();
+
+    ctx.restore();
 
     // ess annotation
     if (tipo === 0) {
         const ess = 1 / (1 + K);
         ctx.fillStyle = C.line2; ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'right';
-        ctx.fillText('ess = ' + fmt(ess, 4), toX(tMax) - 10, toY(finalVal) + 16);
-        // Arrow showing error
+        ctx.fillText('ess = ' + fmt(ess, 4), toX(xMax) - 10, toY(finalVal) + 16);
         ctx.strokeStyle = C.line2; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(toX(tMax) - 5, toY(1)); ctx.lineTo(toX(tMax) - 5, toY(finalVal)); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(toX(xMax) - 5, toY(1)); ctx.lineTo(toX(xMax) - 5, toY(finalVal)); ctx.stroke();
         ctx.fillStyle = C.line2; ctx.font = '10px Segoe UI';
-        ctx.fillText('ess', toX(tMax) - 12, toY((1 + finalVal) / 2) + 3);
+        ctx.fillText('ess', toX(xMax) - 12, toY((1 + finalVal) / 2) + 3);
     } else {
         ctx.fillStyle = C.line3; ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'right';
-        ctx.fillText('ess = 0 (degrau)', toX(tMax) - 10, toY(1) + 18);
+        ctx.fillText('ess = 0 (degrau)', toX(xMax) - 10, toY(1) + 18);
     }
+
+    registerCanvasRedraw(_canvasId, function() { drawErroResponse(tipo, K); },
+        { xMin, xMax, yMin, yMax });
+    registerCanvasTooltip(_canvasId, {
+        type: 'xy', pad, xMin, xMax, yMin, yMax,
+        xLabel: 't', xUnit: 's', yLabel: 'c(t)',
+        getData: function(tVal) {
+            if (tVal < 0) return [];
+            let ct;
+            if (tipo === 0) { ct = (K/(1+K)) * (1 - Math.exp(-(1+K)*tVal)); }
+            else if (tipo === 1) { const wn=Math.sqrt(K),z=0.5/wn; if(z<1){const wd=wn*Math.sqrt(1-z*z),beta=Math.acos(z);ct=1-(Math.exp(-z*wn*tVal)/Math.sqrt(1-z*z))*Math.sin(wd*tVal+beta);}else{ct=1-(1+wn*tVal)*Math.exp(-wn*tVal);} }
+            else { const wn=Math.pow(K,1/3),z=0.3,wd=wn*Math.sqrt(1-z*z),beta=Math.acos(z);ct=1-(Math.exp(-z*wn*tVal)/Math.sqrt(1-z*z))*Math.sin(wd*tVal+beta); }
+            return [{ label: 'c(t)', value: fmt(ct, 4), color: '#7ec8f7' }];
+        }
+    });
 }
 
 // ==================== 5) ROUTH ROOTS - Plano s ====================
@@ -5046,44 +5514,65 @@ function solvePolyDK(coeffs) {
 
 // ==================== 6) ROOT LOCUS ASYMPTOTES ====================
 function drawRLocusAsymptotes(nm, center, angles) {
-    const r = getCtx('canvas_rlocus');
+    const _canvasId = 'canvas_rlocus';
+    const r = getCtx(_canvasId);
     if (!r || !nm || nm <= 0) return;
     const { ctx, w, h } = r;
-    const cx = w / 2, cy = h / 2;
-    const maxR = center !== null ? Math.max(Math.abs(center) * 2, 5) : 5;
-    const scale = Math.min(cx - 40, cy - 40) / maxR;
+    const pad = { l: 40, r: 10, t: 20, b: 25 };
+    const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
 
-    const toX = v => cx + v * scale;
-    const toY = v => cy - v * scale;
+    const defMaxR = center !== null ? Math.max(Math.abs(center) * 2, 5) : 5;
+    const vs = _canvasViewState[_canvasId];
+    let xMin, xMax, yMin, yMax;
+    if (vs && vs._userZoomed) {
+        xMin = vs.xMin; xMax = vs.xMax; yMin = vs.yMin; yMax = vs.yMax;
+    } else {
+        xMin = -defMaxR; xMax = defMaxR; yMin = -defMaxR; yMax = defMaxR;
+    }
+    const xRange = xMax - xMin, yRange = yMax - yMin;
+
+    const toX = v => pad.l + ((v - xMin) / xRange) * pw;
+    const toY = v => pad.t + ph - ((v - yMin) / yRange) * ph;
 
     // Grid
     ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
-    const step = Math.max(1, Math.round(maxR / 4));
-    for (let v = -maxR; v <= maxR; v += step) {
-        ctx.beginPath(); ctx.moveTo(toX(v), 20); ctx.lineTo(toX(v), h - 20); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(40, toY(v)); ctx.lineTo(w - 10, toY(v)); ctx.stroke();
+    const gridRange = Math.max(xRange, yRange);
+    const step = Math.pow(10, Math.floor(Math.log10(gridRange / 2)));
+    const gridStep = gridRange / step > 10 ? step * 2 : step;
+    for (let v = Math.ceil(xMin / gridStep) * gridStep; v <= xMax; v += gridStep) {
+        ctx.beginPath(); ctx.moveTo(toX(v), pad.t); ctx.lineTo(toX(v), pad.t + ph); ctx.stroke();
         ctx.fillStyle = C.text; ctx.font = '9px Segoe UI';
-        ctx.textAlign = 'center'; ctx.fillText(v, toX(v), h - 6);
+        ctx.textAlign = 'center'; ctx.fillText(fmt(v, 1), toX(v), h - pad.b + 12);
+    }
+    for (let v = Math.ceil(yMin / gridStep) * gridStep; v <= yMax; v += gridStep) {
+        ctx.beginPath(); ctx.moveTo(pad.l, toY(v)); ctx.lineTo(pad.l + pw, toY(v)); ctx.stroke();
+        if (Math.abs(v) > gridStep * 0.1) {
+            ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'right';
+            ctx.fillText(fmt(v, 1), pad.l - 4, toY(v) + 3);
+        }
     }
 
     // Axes
     ctx.strokeStyle = C.axis; ctx.lineWidth = 1.2;
-    ctx.beginPath(); ctx.moveTo(30, cy); ctx.lineTo(w - 10, cy); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx, 10); ctx.lineTo(cx, h - 20); ctx.stroke();
+    if (yMin <= 0 && yMax >= 0) { ctx.beginPath(); ctx.moveTo(pad.l, toY(0)); ctx.lineTo(pad.l + pw, toY(0)); ctx.stroke(); }
+    if (xMin <= 0 && xMax >= 0) { ctx.beginPath(); ctx.moveTo(toX(0), pad.t); ctx.lineTo(toX(0), pad.t + ph); ctx.stroke(); }
     ctx.fillStyle = C.text; ctx.font = '11px Segoe UI'; ctx.textAlign = 'center';
-    ctx.fillText('Re(s)', w - 25, cy - 8); ctx.fillText('Im(s)', cx + 22, 18);
+    ctx.fillText('Re(s)', pad.l + pw - 15, toY(0) - 8); ctx.fillText('Im(s)', toX(0) + 22, pad.t + 12);
+
+    // Clip
+    ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
 
     // Center point
     if (center !== null) {
-        ctx.beginPath(); ctx.arc(toX(center), cy, 6, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(toX(center), toY(0), 6, 0, Math.PI * 2);
         ctx.fillStyle = C.line; ctx.fill();
         ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
-        ctx.fillText('sa=' + fmt(center, 2), toX(center), cy + 18);
+        ctx.fillText('sa=' + fmt(center, 2), toX(center), toY(0) + 18);
     }
 
     // Asymptote lines
     const colors = ['#e74c3c', '#2980b9', '#27ae60', '#8e44ad'];
-    const lineLen = maxR * 2;
+    const lineLen = Math.max(xRange, yRange) * 2;
     angles.forEach((ang, i) => {
         if (ang === null) return;
         const rad = ang * Math.PI / 180;
@@ -5094,55 +5583,80 @@ function drawRLocusAsymptotes(nm, center, angles) {
         ctx.lineTo(toX(sx + lineLen * Math.cos(rad)), toY(lineLen * Math.sin(rad)));
         ctx.stroke();
         ctx.setLineDash([]);
-        // Label
         const lx = toX(sx + lineLen * 0.4 * Math.cos(rad));
         const ly = toY(lineLen * 0.4 * Math.sin(rad));
         ctx.fillStyle = colors[i % colors.length]; ctx.font = 'bold 11px Segoe UI';
         ctx.fillText(fmt(ang, 1) + 'deg', lx + 10, ly - 6);
     });
 
+    ctx.restore();
+
     // Title
     ctx.fillStyle = C.text; ctx.font = 'bold 11px Segoe UI'; ctx.textAlign = 'center';
-    ctx.fillText(nm + ' assintotas', cx, h - 4);
+    ctx.fillText(nm + ' assintotas', pad.l + pw / 2, h - 4);
+
+    registerCanvasRedraw(_canvasId, function() { drawRLocusAsymptotes(nm, center, angles); },
+        { xMin, xMax, yMin, yMax });
+    registerCanvasTooltip(_canvasId, {
+        type: 'splane', pad,
+        cx: toX(0), cy: toY(0),
+        scale: pw / xRange
+    });
 }
 
 // ==================== 7) Z-PLANE ====================
 function drawZPlane(mod, re, im) {
-    const r = getCtx('canvas_zplane');
+    const _canvasId = 'canvas_zplane';
+    const r = getCtx(_canvasId);
     if (!r) return;
     const { ctx, w, h } = r;
-    const cx = w / 2, cy = h / 2;
-    const radius = Math.min(cx, cy) - 40;
-    const maxR = Math.max(1.5, (mod || 1) * 1.4);
-    const scale = radius / maxR;
+    const pad = { l: 30, r: 20, t: 20, b: 25 };
+    const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
 
-    const toX = v => cx + v * scale;
-    const toY = v => cy - v * scale;
+    const defMaxR = Math.max(1.5, (mod || 1) * 1.4);
+    const vs = _canvasViewState[_canvasId];
+    let xMin, xMax, yMin, yMax;
+    if (vs && vs._userZoomed) {
+        xMin = vs.xMin; xMax = vs.xMax; yMin = vs.yMin; yMax = vs.yMax;
+    } else {
+        xMin = -defMaxR; xMax = defMaxR; yMin = -defMaxR; yMax = defMaxR;
+    }
+    const xRange = xMax - xMin, yRange = yMax - yMin;
+
+    const toX = v => pad.l + ((v - xMin) / xRange) * pw;
+    const toY = v => pad.t + ph - ((v - yMin) / yRange) * ph;
 
     // Grid circles
     ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
-    for (let r = 0.5; r <= maxR; r += 0.5) {
-        ctx.beginPath(); ctx.arc(cx, cy, r * scale, 0, Math.PI * 2); ctx.stroke();
-        ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'left';
-        ctx.fillText(fmt(r, 1), cx + r * scale + 2, cy - 2);
+    const cxPx = toX(0), cyPx = toY(0);
+    const scaleX = pw / xRange;
+    for (let rv = 0.5; rv <= Math.max(Math.abs(xMin), xMax, Math.abs(yMin), yMax) + 0.5; rv += 0.5) {
+        ctx.beginPath(); ctx.arc(cxPx, cyPx, rv * scaleX, 0, Math.PI * 2); ctx.stroke();
+        if (rv + xMin / xRange > 0) {
+            ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'left';
+            ctx.fillText(fmt(rv, 1), cxPx + rv * scaleX + 2, cyPx - 2);
+        }
     }
 
     // Unit circle (stability boundary)
     ctx.strokeStyle = '#27ae60'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(cx, cy, 1 * scale, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cxPx, cyPx, 1 * scaleX, 0, Math.PI * 2); ctx.stroke();
 
     // Fill stable region
     ctx.fillStyle = 'rgba(39,174,96,0.06)';
-    ctx.beginPath(); ctx.arc(cx, cy, 1 * scale, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cxPx, cyPx, 1 * scaleX, 0, Math.PI * 2); ctx.fill();
 
     // Axes
     ctx.strokeStyle = C.axis; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(20, cy); ctx.lineTo(w - 20, cy); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx, 20); ctx.lineTo(cx, h - 20); ctx.stroke();
+    if (yMin <= 0 && yMax >= 0) { ctx.beginPath(); ctx.moveTo(pad.l, cyPx); ctx.lineTo(pad.l + pw, cyPx); ctx.stroke(); }
+    if (xMin <= 0 && xMax >= 0) { ctx.beginPath(); ctx.moveTo(cxPx, pad.t); ctx.lineTo(cxPx, pad.t + ph); ctx.stroke(); }
     ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
-    ctx.fillText('Re(z)', w - 25, cy - 8); ctx.fillText('Im(z)', cx + 18, 18);
+    ctx.fillText('Re(z)', pad.l + pw - 15, cyPx - 8); ctx.fillText('Im(z)', cxPx + 18, pad.t + 12);
     ctx.fillStyle = '#27ae60'; ctx.font = '9px Segoe UI';
-    ctx.fillText('|z|=1', cx + 1 * scale + 2, cy - 1 * scale + 14);
+    ctx.fillText('|z|=1', cxPx + 1 * scaleX + 2, cyPx - 1 * scaleX + 14);
+
+    // Clip
+    ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
 
     // Pole
     if (re !== null && im !== null) {
@@ -5154,7 +5668,6 @@ function drawZPlane(mod, re, im) {
         ctx.fillStyle = C.pole; ctx.font = '10px Segoe UI'; ctx.textAlign = 'left';
         ctx.fillText(`(${fmt(re, 3)}, ${fmt(im, 3)})`, px + 10, py - 8);
 
-        // Conjugate if im != 0
         if (Math.abs(im) > 0.001) {
             const py2 = toY(-im);
             ctx.strokeStyle = C.pole; ctx.lineWidth = 2.5;
@@ -5163,8 +5676,12 @@ function drawZPlane(mod, re, im) {
         }
     }
 
-    registerCanvasTooltip('canvas_zplane', {
-        type: 'discrete', pad: {l:20,r:20,t:20,b:20}, cx, cy, scale
+    ctx.restore();
+
+    registerCanvasRedraw(_canvasId, function() { drawZPlane(mod, re, im); },
+        { xMin, xMax, yMin, yMax });
+    registerCanvasTooltip(_canvasId, {
+        type: 'discrete', pad, cx: cxPx, cy: cyPx, scale: scaleX
     });
 }
 
@@ -5485,20 +6002,29 @@ function calcFullRL() {
     }
 
     // ── Bounds ─────────────────────────────────────────────────────────
-    let rMin = -1, rMax = 1, iMin = -1, iMax = 1;
+    const _canvasId = 'canvas_fullrlocus';
+    let defRMin = -1, defRMax = 1, defIMin = -1, defIMax = 1;
     branches.forEach(br => br.forEach(r => {
         if (isFinite(r.re) && isFinite(r.im) && Math.abs(r.re) < 1e4 && Math.abs(r.im) < 1e4) {
-            rMin = Math.min(rMin, r.re); rMax = Math.max(rMax, r.re);
-            iMin = Math.min(iMin, r.im); iMax = Math.max(iMax, r.im);
+            defRMin = Math.min(defRMin, r.re); defRMax = Math.max(defRMax, r.re);
+            defIMin = Math.min(defIMin, r.im); defIMax = Math.max(defIMax, r.im);
         }
     }));
-    poles.forEach(p => { rMin = Math.min(rMin, p.re); rMax = Math.max(rMax, p.re); iMin = Math.min(iMin, p.im); iMax = Math.max(iMax, p.im); });
-    zeros.forEach(z => { rMin = Math.min(rMin, z.re); rMax = Math.max(rMax, z.re); iMin = Math.min(iMin, z.im); iMax = Math.max(iMax, z.im); });
+    poles.forEach(p => { defRMin = Math.min(defRMin, p.re); defRMax = Math.max(defRMax, p.re); defIMin = Math.min(defIMin, p.im); defIMax = Math.max(defIMax, p.im); });
+    zeros.forEach(z => { defRMin = Math.min(defRMin, z.re); defRMax = Math.max(defRMax, z.re); defIMin = Math.min(defIMin, z.im); defIMax = Math.max(defIMax, z.im); });
 
-    const margin = Math.max(Math.abs(rMax - rMin), Math.abs(iMax - iMin)) * 0.15 + 0.5;
-    rMin -= margin; rMax += margin;
-    const iAbs = Math.max(Math.abs(iMin), Math.abs(iMax)) + margin;
-    iMin = -iAbs; iMax = iAbs;
+    const margin = Math.max(Math.abs(defRMax - defRMin), Math.abs(defIMax - defIMin)) * 0.15 + 0.5;
+    defRMin -= margin; defRMax += margin;
+    const iAbs = Math.max(Math.abs(defIMin), Math.abs(defIMax)) + margin;
+    defIMin = -iAbs; defIMax = iAbs;
+
+    const vs = _canvasViewState[_canvasId];
+    let rMin, rMax, iMin, iMax;
+    if (vs && vs._userZoomed) {
+        rMin = vs.xMin; rMax = vs.xMax; iMin = vs.yMin; iMax = vs.yMax;
+    } else {
+        rMin = defRMin; rMax = defRMax; iMin = defIMin; iMax = defIMax;
+    }
 
     const pad = { l: 50, r: 20, t: 25, b: 35 };
     const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
@@ -5529,6 +6055,9 @@ function calcFullRL() {
     ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
     ctx.fillText('Re(s)', pad.l + pw - 15, toY(0) - 8);
     if (rMin < 0 && rMax > 0) ctx.fillText('Im(s)', toX(0) + 18, pad.t + 6);
+
+    // Clip to plot area
+    ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
 
     // ── Draw root locus as point cloud ─────────────────────────────────
     // Assign each root a branch color based on nearest pole (at that K step).
@@ -5597,6 +6126,8 @@ function calcFullRL() {
         ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI*2); ctx.stroke();
     });
 
+    ctx.restore(); // end clip
+
     // ── Legend ─────────────────────────────────────────────────────────
     ctx.font = '10px Segoe UI'; ctx.textAlign = 'left';
     let legendY = pad.t + 14;
@@ -5625,7 +6156,9 @@ function calcFullRL() {
     // ── Interactive tooltip ────────────────────────────────────────────
     const _rlBranches = branches.map(br => br.slice());
     const _rlK = allK.slice();
-    registerCanvasTooltip('canvas_fullrlocus', {
+    registerCanvasRedraw(_canvasId, function() { calcFullRL(); },
+        { xMin: rMin, xMax: rMax, yMin: iMin, yMax: iMax });
+    registerCanvasTooltip(_canvasId, {
         type: 'splane', pad,
         cx: toX(0), cy: toY(0),
         scale: pw / (rMax - rMin),
@@ -6089,25 +6622,43 @@ function computeBodeData(num, den) {
 
 function drawGenericBode(num, den, label) {
     const bd = computeBodeData(num, den);
-    const logMin = Math.log10(bd.wMin), logMax = Math.log10(bd.wMax);
+    const defLogMin = Math.log10(bd.wMin), defLogMax = Math.log10(bd.wMax);
     const pad = { l: 60, r: 20, t: 20, b: 35 };
 
-    function drawOnCanvas(canvasId, data, yMin, yMax, unitLabel, isPhase) {
+    const magRange = bd.mags.length > 0 ? [Math.min(...bd.mags), Math.max(...bd.mags)] : [-60, 40];
+    const defMagMin = Math.floor(magRange[0] / 20) * 20 - 20;
+    const defMagMax = Math.ceil(magRange[1] / 20) * 20 + 20;
+    const phRange = bd.phases.length > 0 ? [Math.min(...bd.phases), Math.max(...bd.phases)] : [-200, 10];
+    const defPhMin = Math.floor(phRange[0] / 45) * 45 - 45;
+    const defPhMax = Math.ceil(phRange[1] / 45) * 45 + 45;
+
+    function drawOnCanvas(canvasId, data, defYMin, defYMax, unitLabel, isPhase) {
         const r = getCtx(canvasId);
         if (!r) return;
         const { ctx, w, h } = r;
         const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
-        const toX = logW => pad.l + ((logW - logMin) / (logMax - logMin)) * pw;
-        const toY = v => pad.t + ph - ((v - yMin) / (yMax - yMin)) * ph;
+
+        const vs = _canvasViewState[canvasId];
+        let xMin, xMax, yMin, yMax;
+        if (vs && vs._userZoomed) {
+            xMin = vs.xMin; xMax = vs.xMax; yMin = vs.yMin; yMax = vs.yMax;
+        } else {
+            xMin = defLogMin; xMax = defLogMax; yMin = defYMin; yMax = defYMax;
+        }
+        const xRange = xMax - xMin, yRange = yMax - yMin;
+
+        const toX = logW => pad.l + ((logW - xMin) / xRange) * pw;
+        const toY = v => pad.t + ph - ((v - yMin) / yRange) * ph;
+
         ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
-        for (let lg = Math.ceil(logMin); lg <= Math.floor(logMax); lg++) {
+        for (let lg = Math.ceil(xMin); lg <= Math.floor(xMax); lg++) {
             const x = toX(lg);
             ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
             ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'center';
             ctx.fillText('10^' + lg, x, h - pad.b + 14);
         }
         for (let i = 0; i <= 5; i++) {
-            const yv = yMin + (i / 5) * (yMax - yMin), y = toY(yv);
+            const yv = yMin + (i / 5) * yRange, y = toY(yv);
             ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
             ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'right';
             ctx.fillText(fmt(yv, 0), pad.l - 5, y + 3);
@@ -6123,11 +6674,15 @@ function drawGenericBode(num, den, label) {
             ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 0.8; ctx.setLineDash([5, 3]);
             ctx.beginPath(); ctx.moveTo(pad.l, toY(-180)); ctx.lineTo(pad.l + pw, toY(-180)); ctx.stroke(); ctx.setLineDash([]);
         }
+
+        // Clip
+        ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
+
         // Curve
         ctx.strokeStyle = C.line; ctx.lineWidth = 2; ctx.beginPath();
         for (let i = 0; i < data.length; i++) {
             const logW = Math.log10(bd.freqs[i]);
-            const px = toX(logW), py = toY(Math.max(yMin, Math.min(yMax, data[i])));
+            const px = toX(logW), py = toY(data[i]);
             i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
         }
         ctx.stroke();
@@ -6146,41 +6701,32 @@ function drawGenericBode(num, den, label) {
             ctx.fillStyle = '#e74c3c'; ctx.font = '9px Segoe UI'; ctx.textAlign = 'center';
             ctx.fillText('ωpc', x, pad.t - 4);
         }
+
+        ctx.restore();
+
         ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
         ctx.fillText('ω (rad/s)', pad.l + pw / 2, h - 2);
         ctx.save(); ctx.translate(12, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
         ctx.fillText(unitLabel, 0, 0); ctx.restore();
+
+        registerCanvasRedraw(canvasId, function() { drawGenericBode(num, den, label); },
+            { xMin, xMax, yMin, yMax });
+        registerCanvasTooltip(canvasId, {
+            type: 'bode', pad, logXMin: xMin, logXMax: xMax, yMin, yMax,
+            yLabel: unitLabel, yUnit: isPhase ? '°' : 'dB',
+            getData: function(w) {
+                const idx = Math.round((Math.log10(w) - defLogMin) / (defLogMax - defLogMin) * (bd.freqs.length - 1));
+                const val = isPhase ? bd.phases[Math.max(0, Math.min(idx, bd.phases.length - 1))] : bd.mags[Math.max(0, Math.min(idx, bd.mags.length - 1))];
+                const lbl = isPhase ? '∠G(jω)' : '|G(jω)|';
+                const unit = isPhase ? '°' : ' dB';
+                return [{ label: lbl, value: fmt(val, 2) + unit, color: isPhase ? '#f7d07e' : '#7ec8f7' }];
+            }
+        });
     }
 
-    const magRange = bd.mags.length > 0 ? [Math.min(...bd.mags), Math.max(...bd.mags)] : [-60, 40];
-    const magMin = Math.floor(magRange[0] / 20) * 20 - 20;
-    const magMax = Math.ceil(magRange[1] / 20) * 20 + 20;
-    const phRange = bd.phases.length > 0 ? [Math.min(...bd.phases), Math.max(...bd.phases)] : [-200, 10];
-    const phMin = Math.floor(phRange[0] / 45) * 45 - 45;
-    const phMax = Math.ceil(phRange[1] / 45) * 45 + 45;
+    drawOnCanvas('canvas_bode_mag', bd.mags, defMagMin, defMagMax, '|G| (dB)', false);
+    drawOnCanvas('canvas_bode_phase', bd.phases, defPhMin, defPhMax, 'Fase (°)', true);
 
-    drawOnCanvas('canvas_bode_mag', bd.mags, magMin, magMax, '|G| (dB)', false);
-    drawOnCanvas('canvas_bode_phase', bd.phases, phMin, phMax, 'Fase (°)', true);
-
-    // Interactive tooltips for generic Bode
-    registerCanvasTooltip('canvas_bode_mag', {
-        type: 'bode', pad, logXMin: logMin, logXMax: logMax, yMin: magMin, yMax: magMax,
-        yLabel: '|G|', yUnit: 'dB',
-        getData: function(w) {
-            const idx = Math.round((Math.log10(w) - logMin) / (logMax - logMin) * (bd.freqs.length - 1));
-            const mag = bd.mags[Math.max(0, Math.min(idx, bd.mags.length - 1))];
-            return [{ label: '|G(jω)|', value: fmt(mag, 2) + ' dB', color: '#7ec8f7' }];
-        }
-    });
-    registerCanvasTooltip('canvas_bode_phase', {
-        type: 'bode', pad, logXMin: logMin, logXMax: logMax, yMin: phMin, yMax: phMax,
-        yLabel: 'Fase', yUnit: '°',
-        getData: function(w) {
-            const idx = Math.round((Math.log10(w) - logMin) / (logMax - logMin) * (bd.freqs.length - 1));
-            const ph = bd.phases[Math.max(0, Math.min(idx, bd.phases.length - 1))];
-            return [{ label: '∠G(jω)', value: fmt(ph, 2) + '°', color: '#f7d07e' }];
-        }
-    });
     return bd;
 }
 
@@ -6474,30 +7020,40 @@ function sidLoadData() {
 }
 
 function sidDrawData() {
-    const r = getCtx('canvas_sid_data');
+    const _canvasId = 'canvas_sid_data';
+    const r = getCtx(_canvasId);
     if (!r || sid_t.length === 0) return;
     const { ctx, w, h } = r;
     const pad = { l: 55, r: 15, t: 20, b: 35 };
     const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
 
-    const tMin = sid_t[0], tMax = sid_t[sid_t.length - 1];
-    let yMin = Math.min(...sid_y), yMax = Math.max(...sid_y);
-    const yMarg = (yMax - yMin) * 0.1 || 0.5;
-    yMin -= yMarg; yMax += yMarg;
+    const defTMin = sid_t[0], defTMax = sid_t[sid_t.length - 1];
+    let defYMin = Math.min(...sid_y), defYMax = Math.max(...sid_y);
+    const yMarg = (defYMax - defYMin) * 0.1 || 0.5;
+    defYMin -= yMarg; defYMax += yMarg;
 
-    const toX = v => pad.l + ((v - tMin) / (tMax - tMin || 1)) * pw;
-    const toY = v => pad.t + ph - ((v - yMin) / (yMax - yMin || 1)) * ph;
+    const vs = _canvasViewState[_canvasId];
+    let xMin, xMax, yMin, yMax;
+    if (vs && vs._userZoomed) {
+        xMin = vs.xMin; xMax = vs.xMax; yMin = vs.yMin; yMax = vs.yMax;
+    } else {
+        xMin = defTMin; xMax = defTMax; yMin = defYMin; yMax = defYMax;
+    }
+    const xRange = xMax - xMin || 1, yRange = yMax - yMin || 1;
+
+    const toX = v => pad.l + ((v - xMin) / xRange) * pw;
+    const toY = v => pad.t + ph - ((v - yMin) / yRange) * ph;
 
     // Grid
     ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
     for (let i = 0; i <= 5; i++) {
-        const yv = yMin + (i / 5) * (yMax - yMin);
+        const yv = yMin + (i / 5) * yRange;
         ctx.beginPath(); ctx.moveTo(pad.l, toY(yv)); ctx.lineTo(pad.l + pw, toY(yv)); ctx.stroke();
         ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'right';
         ctx.fillText(fmt(yv, 2), pad.l - 5, toY(yv) + 3);
     }
     for (let i = 0; i <= 6; i++) {
-        const tv = tMin + (i / 6) * (tMax - tMin);
+        const tv = xMin + (i / 6) * xRange;
         ctx.beginPath(); ctx.moveTo(toX(tv), pad.t); ctx.lineTo(toX(tv), pad.t + ph); ctx.stroke();
         ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'center';
         ctx.fillText(fmt(tv, 2), toX(tv), h - pad.b + 14);
@@ -6506,6 +7062,9 @@ function sidDrawData() {
     // Axes
     ctx.strokeStyle = C.axis; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph); ctx.stroke();
+
+    // Clip
+    ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
 
     // Data points
     ctx.fillStyle = '#1565c0';
@@ -6520,6 +7079,8 @@ function sidDrawData() {
     }
     ctx.stroke();
 
+    ctx.restore();
+
     // Labels
     ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
     ctx.fillText('Tempo (s)', pad.l + pw / 2, h - 3);
@@ -6528,8 +7089,10 @@ function sidDrawData() {
     ctx.fillStyle = '#1565c0'; ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'left';
     ctx.fillText('Dados medidos (' + sid_t.length + ' pts)', pad.l + 6, pad.t + 12);
 
-    registerCanvasTooltip('canvas_sid_data', {
-        type: 'xy', pad, xMin: tMin, xMax: tMax, yMin, yMax,
+    registerCanvasRedraw(_canvasId, function() { sidDrawData(); },
+        { xMin, xMax, yMin, yMax });
+    registerCanvasTooltip(_canvasId, {
+        type: 'xy', pad, xMin, xMax, yMin, yMax,
         xLabel: 't', xUnit: 's', yLabel: 'y(t)',
         getData: function(tVal) {
             const idx = sid_t.reduce((best, t, i) => Math.abs(t - tVal) < Math.abs(sid_t[best] - tVal) ? i : best, 0);
@@ -7492,32 +8055,45 @@ function sidShowResult(modelHTML, params, yHat) {
 }
 
 function sidDrawCompare(yHat) {
-    const r = getCtx('canvas_sid_compare');
+    const _canvasId = 'canvas_sid_compare';
+    const r = getCtx(_canvasId);
     if (!r) return;
     const { ctx, w, h } = r;
     const pad = { l: 55, r: 15, t: 25, b: 35 };
     const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
     const N = sid_t.length;
 
-    const tMin = sid_t[0], tMax = sid_t[N - 1];
+    const defTMin = sid_t[0], defTMax = sid_t[N - 1];
     const allY = [...sid_y, ...yHat];
-    let yMin = Math.min(...allY), yMax = Math.max(...allY);
-    const yMarg = (yMax - yMin) * 0.1 || 0.5;
-    yMin -= yMarg; yMax += yMarg;
+    let defYMin = Math.min(...allY), defYMax = Math.max(...allY);
+    const yMarg = (defYMax - defYMin) * 0.1 || 0.5;
+    defYMin -= yMarg; defYMax += yMarg;
 
-    const toX = v => pad.l + ((v - tMin) / (tMax - tMin || 1)) * pw;
-    const toY = v => pad.t + ph - ((v - yMin) / (yMax - yMin || 1)) * ph;
+    const vs = _canvasViewState[_canvasId];
+    let xMin, xMax, yMin, yMax;
+    if (vs && vs._userZoomed) {
+        xMin = vs.xMin; xMax = vs.xMax; yMin = vs.yMin; yMax = vs.yMax;
+    } else {
+        xMin = defTMin; xMax = defTMax; yMin = defYMin; yMax = defYMax;
+    }
+    const xRange = xMax - xMin || 1, yRange = yMax - yMin || 1;
+
+    const toX = v => pad.l + ((v - xMin) / xRange) * pw;
+    const toY = v => pad.t + ph - ((v - yMin) / yRange) * ph;
 
     // Grid
     ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
     for (let i = 0; i <= 5; i++) {
-        const yv = yMin + (i / 5) * (yMax - yMin);
+        const yv = yMin + (i / 5) * yRange;
         ctx.beginPath(); ctx.moveTo(pad.l, toY(yv)); ctx.lineTo(pad.l + pw, toY(yv)); ctx.stroke();
         ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'right';
         ctx.fillText(fmt(yv, 2), pad.l - 5, toY(yv) + 3);
     }
     ctx.strokeStyle = C.axis; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph); ctx.stroke();
+
+    // Clip
+    ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
 
     // Measured (dots)
     ctx.fillStyle = '#1565c0';
@@ -7533,6 +8109,8 @@ function sidDrawCompare(yHat) {
     }
     ctx.stroke();
 
+    ctx.restore();
+
     // Legend
     ctx.fillStyle = '#1565c0'; ctx.font = '10px Segoe UI'; ctx.textAlign = 'left';
     ctx.beginPath(); ctx.arc(pad.l + 10, pad.t + 10, 3, 0, Math.PI * 2); ctx.fill();
@@ -7546,8 +8124,10 @@ function sidDrawCompare(yHat) {
     ctx.fillText('Tempo (s)', pad.l + pw / 2, h - 3);
 
     const _yHatRef = yHat;
-    registerCanvasTooltip('canvas_sid_compare', {
-        type: 'xy', pad, xMin: tMin, xMax: tMax, yMin, yMax,
+    registerCanvasRedraw(_canvasId, function() { sidDrawCompare(yHat); },
+        { xMin, xMax, yMin, yMax });
+    registerCanvasTooltip(_canvasId, {
+        type: 'xy', pad, xMin, xMax, yMin, yMax,
         xLabel: 't', xUnit: 's', yLabel: 'y',
         getData: function(tVal) {
             const idx = sid_t.reduce((best, t, i) => Math.abs(t - tVal) < Math.abs(sid_t[best] - tVal) ? i : best, 0);
@@ -7562,7 +8142,8 @@ function sidDrawCompare(yHat) {
 }
 
 function sidDrawResiduals(yHat) {
-    const r = getCtx('canvas_sid_resid');
+    const _canvasId = 'canvas_sid_resid';
+    const r = getCtx(_canvasId);
     if (!r) return;
     const { ctx, w, h } = r;
     const pad = { l: 55, r: 15, t: 15, b: 30 };
@@ -7570,30 +8151,45 @@ function sidDrawResiduals(yHat) {
     const N = sid_t.length;
     const resid = sid_y.map((y, i) => y - yHat[i]);
 
-    const tMin = sid_t[0], tMax = sid_t[N - 1];
-    let rMax = Math.max(...resid.map(Math.abs)) * 1.2 || 1;
-    const toX = v => pad.l + ((v - tMin) / (tMax - tMin || 1)) * pw;
-    const toY = v => pad.t + ph / 2 - (v / rMax) * (ph / 2);
+    const defTMin = sid_t[0], defTMax = sid_t[N - 1];
+    const defRMax = Math.max(...resid.map(Math.abs)) * 1.2 || 1;
+
+    const vs = _canvasViewState[_canvasId];
+    let xMin, xMax, yMin, yMax;
+    if (vs && vs._userZoomed) {
+        xMin = vs.xMin; xMax = vs.xMax; yMin = vs.yMin; yMax = vs.yMax;
+    } else {
+        xMin = defTMin; xMax = defTMax; yMin = -defRMax; yMax = defRMax;
+    }
+    const xRange = xMax - xMin || 1, yRange = yMax - yMin || 1;
+
+    const toX = v => pad.l + ((v - xMin) / xRange) * pw;
+    const toY = v => pad.t + ph - ((v - yMin) / yRange) * ph;
 
     // Grid
     ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
-    for (let i = -2; i <= 2; i++) {
-        const yv = i * rMax / 2;
+    for (let i = 0; i <= 4; i++) {
+        const yv = yMin + (i / 4) * yRange;
         ctx.beginPath(); ctx.moveTo(pad.l, toY(yv)); ctx.lineTo(pad.l + pw, toY(yv)); ctx.stroke();
-        if (i !== 0) {
+        if (Math.abs(yv) > yRange * 0.01) {
             ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'right';
             ctx.fillText(fmt(yv, 3), pad.l - 4, toY(yv) + 3);
         }
     }
 
     // Zero line
-    ctx.strokeStyle = '#95a5a6'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
-    ctx.beginPath(); ctx.moveTo(pad.l, toY(0)); ctx.lineTo(pad.l + pw, toY(0)); ctx.stroke();
-    ctx.setLineDash([]);
+    if (yMin <= 0 && yMax >= 0) {
+        ctx.strokeStyle = '#95a5a6'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(pad.l, toY(0)); ctx.lineTo(pad.l + pw, toY(0)); ctx.stroke();
+        ctx.setLineDash([]);
+    }
 
     // Axes
     ctx.strokeStyle = C.axis; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph); ctx.stroke();
+
+    // Clip
+    ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
 
     // Bars
     ctx.fillStyle = 'rgba(231,76,60,0.5)';
@@ -7604,12 +8200,16 @@ function sidDrawResiduals(yHat) {
         ctx.fillRect(x, Math.min(y0, yr), bw, Math.abs(yr - y0));
     }
 
+    ctx.restore();
+
     ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
     ctx.fillText('Residuos e(k) = y(k) - ŷ(k)', pad.l + pw / 2, h - 4);
 
     const _residRef = resid;
-    registerCanvasTooltip('canvas_sid_resid', {
-        type: 'xy', pad, xMin: tMin, xMax: tMax, yMin: -rMax, yMax: rMax,
+    registerCanvasRedraw(_canvasId, function() { sidDrawResiduals(yHat); },
+        { xMin, xMax, yMin, yMax });
+    registerCanvasTooltip(_canvasId, {
+        type: 'xy', pad, xMin, xMax, yMin, yMax,
         xLabel: 't', xUnit: 's', yLabel: 'e(k)',
         getData: function(tVal) {
             const idx = sid_t.reduce((best, t, i) => Math.abs(t - tVal) < Math.abs(sid_t[best] - tVal) ? i : best, 0);
@@ -7627,17 +8227,16 @@ function sidDrawBode() {
         return;
     }
 
-    const wMin = 0.01, wMax = 100;
-    const logMin = Math.log10(wMin), logMax = Math.log10(wMax);
+    const defWMin = 0.01, defWMax = 100;
+    const defLogMin = Math.log10(defWMin), defLogMax = Math.log10(defWMax);
     const Npts = 200;
 
     // Evaluate polynomial at s=jw: coeffs = [s^0, s^1, ..., s^n]
     function evalPolyJw(coeffs, w) {
         let re = 0, im = 0;
-        // (jw)^k: k=0->1, k=1->jw, k=2->-w^2, k=3->-jw^3, ...
         for (let k = 0; k < coeffs.length; k++) {
             const wk = Math.pow(w, k);
-            const phase = k % 4; // 0: +1, 1: +j, 2: -1, 3: -j
+            const phase = k % 4;
             if (phase === 0) re += coeffs[k] * wk;
             else if (phase === 1) im += coeffs[k] * wk;
             else if (phase === 2) re -= coeffs[k] * wk;
@@ -7680,7 +8279,7 @@ function sidDrawBode() {
 
     const mags = [], phases = [];
     for (let i = 0; i <= Npts; i++) {
-        const logW = logMin + (i / Npts) * (logMax - logMin);
+        const logW = defLogMin + (i / Npts) * (defLogMax - defLogMin);
         const w = Math.pow(10, logW);
         const g = evalTF(w);
         const mag = 20 * Math.log10(Math.sqrt(g.re * g.re + g.im * g.im));
@@ -7689,37 +8288,50 @@ function sidDrawBode() {
         phases.push(phase);
     }
 
-    function drawBodeSub(canvasId, data, yLabel) {
+    // Compute default Y bounds
+    let defMagMin = Math.min(...mags), defMagMax = Math.max(...mags);
+    const magDm = (defMagMax - defMagMin) * 0.1 || 5;
+    defMagMin -= magDm; defMagMax += magDm;
+    let defPhMin = Math.min(...phases), defPhMax = Math.max(...phases);
+    const phDm = (defPhMax - defPhMin) * 0.1 || 5;
+    defPhMin -= phDm; defPhMax += phDm;
+
+    function drawBodeSub(canvasId, data, yLabel, isPhase, defYMin, defYMax) {
         const r = getCtx(canvasId);
         if (!r) return;
         const { ctx, w, h } = r;
         const pad = { l: 55, r: 15, t: 15, b: 30 };
         const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
 
-        let dMin = Math.min(...data), dMax = Math.max(...data);
-        const dm = (dMax - dMin) * 0.1 || 5;
-        dMin -= dm; dMax += dm;
+        const vs = _canvasViewState[canvasId];
+        let xMin, xMax, yMin, yMax;
+        if (vs && vs._userZoomed) {
+            xMin = vs.xMin; xMax = vs.xMax; yMin = vs.yMin; yMax = vs.yMax;
+        } else {
+            xMin = defLogMin; xMax = defLogMax; yMin = defYMin; yMax = defYMax;
+        }
+        const xRange = xMax - xMin, yRange = yMax - yMin || 1;
 
-        const toX = i => pad.l + (i / Npts) * pw;
-        const toY = v => pad.t + ph - ((v - dMin) / (dMax - dMin || 1)) * ph;
+        const toX = logW => pad.l + ((logW - xMin) / xRange) * pw;
+        const toY = v => pad.t + ph - ((v - yMin) / yRange) * ph;
 
         // Grid
         ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
-        for (let lg = Math.ceil(logMin); lg <= Math.floor(logMax); lg++) {
-            const x = pad.l + ((lg - logMin) / (logMax - logMin)) * pw;
+        for (let lg = Math.ceil(xMin); lg <= Math.floor(xMax); lg++) {
+            const x = toX(lg);
             ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
             ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'center';
             ctx.fillText('10^' + lg, x, h - pad.b + 12);
         }
         for (let i = 0; i <= 4; i++) {
-            const yv = dMin + (i / 4) * (dMax - dMin);
+            const yv = yMin + (i / 4) * yRange;
             ctx.beginPath(); ctx.moveTo(pad.l, toY(yv)); ctx.lineTo(pad.l + pw, toY(yv)); ctx.stroke();
             ctx.fillStyle = C.text; ctx.font = '9px Segoe UI'; ctx.textAlign = 'right';
             ctx.fillText(fmt(yv, 1), pad.l - 4, toY(yv) + 3);
         }
 
         // 0 dB / -180 line
-        if (dMin < 0 && dMax > 0) {
+        if (yMin < 0 && yMax > 0) {
             ctx.strokeStyle = '#95a5a6'; ctx.lineWidth = 0.8; ctx.setLineDash([4, 3]);
             ctx.beginPath(); ctx.moveTo(pad.l, toY(0)); ctx.lineTo(pad.l + pw, toY(0)); ctx.stroke();
             ctx.setLineDash([]);
@@ -7728,50 +8340,47 @@ function sidDrawBode() {
         ctx.strokeStyle = C.axis; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph); ctx.stroke();
 
-        // Curve
+        // Clip
+        ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
+
+        // Curve — resample within view bounds for better resolution
         ctx.strokeStyle = C.line; ctx.lineWidth = 2;
         ctx.beginPath();
-        for (let i = 0; i <= Npts; i++) {
-            const x = toX(i), y = toY(data[i]);
+        const drawN = 300;
+        for (let i = 0; i <= drawN; i++) {
+            const logW = xMin + (i / drawN) * xRange;
+            const wFreq = Math.pow(10, logW);
+            const g = evalTF(wFreq);
+            const val = isPhase ? Math.atan2(g.im, g.re) * 180 / Math.PI : 20 * Math.log10(Math.sqrt(g.re * g.re + g.im * g.im));
+            const x = toX(logW), y = toY(val);
             i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
         }
         ctx.stroke();
+
+        ctx.restore();
 
         ctx.fillStyle = C.text; ctx.font = '10px Segoe UI'; ctx.textAlign = 'center';
         ctx.fillText('w (rad/s)', pad.l + pw / 2, h - 2);
         ctx.save(); ctx.translate(10, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
         ctx.fillText(yLabel, 0, 0); ctx.restore();
+
+        registerCanvasRedraw(canvasId, function() { sidDrawBode(); },
+            { xMin, xMax, yMin, yMax });
+        registerCanvasTooltip(canvasId, {
+            type: 'bode', pad, logXMin: xMin, logXMax: xMax, yMin, yMax,
+            yLabel: isPhase ? 'Fase' : '|G|', yUnit: isPhase ? '°' : 'dB',
+            getData: function(w) {
+                const g = evalTF(w);
+                const val = isPhase ? Math.atan2(g.im, g.re) * 180 / Math.PI : 20 * Math.log10(Math.sqrt(g.re * g.re + g.im * g.im));
+                const lbl = isPhase ? '∠G(jω)' : '|G(jω)|';
+                const unit = isPhase ? '°' : ' dB';
+                return [{ label: lbl, value: fmt(val, 2) + unit, color: isPhase ? '#f7d07e' : '#7ec8f7' }];
+            }
+        });
     }
 
-    drawBodeSub('canvas_sid_bode_mag', mags, '|G| (dB)');
-    drawBodeSub('canvas_sid_bode_phase', phases, 'Fase (°)');
-
-    // Interactive tooltips for SID Bode
-    const _sidMags = mags, _sidPhases = phases;
-    registerCanvasTooltip('canvas_sid_bode_mag', {
-        type: 'bode', pad: { l: 55, r: 15, t: 15, b: 30 },
-        logXMin: logMin, logXMax: logMax,
-        yMin: Math.min(...mags) - (Math.max(...mags) - Math.min(...mags)) * 0.1,
-        yMax: Math.max(...mags) + (Math.max(...mags) - Math.min(...mags)) * 0.1,
-        yLabel: '|G|', yUnit: 'dB',
-        getData: function(w) {
-            const idx = Math.round((Math.log10(w) - logMin) / (logMax - logMin) * Npts);
-            const mag = _sidMags[Math.max(0, Math.min(idx, _sidMags.length - 1))];
-            return [{ label: '|G(jω)|', value: fmt(mag, 2) + ' dB', color: '#7ec8f7' }];
-        }
-    });
-    registerCanvasTooltip('canvas_sid_bode_phase', {
-        type: 'bode', pad: { l: 55, r: 15, t: 15, b: 30 },
-        logXMin: logMin, logXMax: logMax,
-        yMin: Math.min(...phases) - (Math.max(...phases) - Math.min(...phases)) * 0.1,
-        yMax: Math.max(...phases) + (Math.max(...phases) - Math.min(...phases)) * 0.1,
-        yLabel: 'Fase', yUnit: '°',
-        getData: function(w) {
-            const idx = Math.round((Math.log10(w) - logMin) / (logMax - logMin) * Npts);
-            const ph = _sidPhases[Math.max(0, Math.min(idx, _sidPhases.length - 1))];
-            return [{ label: '∠G(jω)', value: fmt(ph, 2) + '°', color: '#f7d07e' }];
-        }
-    });
+    drawBodeSub('canvas_sid_bode_mag', mags, '|G| (dB)', false, defMagMin, defMagMax);
+    drawBodeSub('canvas_sid_bode_phase', phases, 'Fase (°)', true, defPhMin, defPhMax);
 }
 
 // Init sysid empty canvases
