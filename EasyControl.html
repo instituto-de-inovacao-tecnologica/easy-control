@@ -367,12 +367,13 @@
             position: absolute; top: 6px; right: 6px;
             display: grid;
             grid-template-columns: 26px 26px 26px;
-            grid-template-rows: 26px 26px 26px 26px;
+            grid-template-rows: 26px 26px 26px 26px 22px;
             grid-template-areas:
                 "zin  up   zout"
                 "left reset right"
                 "fs   down clear"
-                "draw draw  draw";
+                "draw draw  draw"
+                "colors colors colors";
             gap: 3px; z-index: 5;
             opacity: 0; transition: opacity 0.2s;
         }
@@ -395,6 +396,14 @@
         .canvas-zoom-btn[data-action="clearmarkers"] { grid-area: clear; }
         .canvas-zoom-btn[data-action="draw"] { grid-area: draw; width: auto; font-size: 10px; padding: 0 6px; }
         .canvas-zoom-btn[data-action="draw"].active { background: rgba(231,76,60,0.85); }
+        .canvas-draw-colors { grid-area: colors; display: none; gap: 2px; align-items: center; justify-content: center; }
+        .canvas-draw-colors.visible { display: flex; }
+        .canvas-color-dot {
+            width: 16px; height: 16px; border-radius: 50%; border: 2px solid transparent;
+            cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.4); transition: transform 0.1s;
+        }
+        .canvas-color-dot:hover { transform: scale(1.25); }
+        .canvas-color-dot.selected { border-color: #fff; transform: scale(1.2); }
         .canvas-zoom-wrap:fullscreen {
             background: #0a0f1e; display: flex; align-items: center; justify-content: center;
             width: 100vw; height: 100vh;
@@ -4215,6 +4224,7 @@ function _drawCanvasMarkers(id) {
 const _canvasSnapshots = {}; // { id: ImageData } — snapshot before markers
 const _canvasDrawings = {}; // { id: [ { color, width, points: [{x,y}] } ] } — freehand strokes in data coords
 const _canvasDrawMode = {}; // { id: boolean }
+const _canvasDrawColor = {}; // { id: string } — selected drawing color
 
 // Draw all freehand strokes for a canvas (in data coordinates → pixel)
 function _drawCanvasStrokes(id) {
@@ -4302,7 +4312,14 @@ function _ensureZoomWrap(cv) {
         '<button class="canvas-zoom-btn" data-action="reset" style="font-size:11px;">&#8634;</button>' +
         '<button class="canvas-zoom-btn" data-action="clearmarkers" style="font-size:9px;" title="Limpar marcadores">&#10005;</button>' +
         '<button class="canvas-zoom-btn" data-action="fullscreen" style="font-size:12px;" title="Tela cheia">&#x26F6;</button>' +
-        '<button class="canvas-zoom-btn" data-action="draw" title="Desenho livre">&#9998; Desenhar</button>';
+        '<button class="canvas-zoom-btn" data-action="draw" title="Desenho livre">&#9998; Desenhar</button>' +
+        '<div class="canvas-draw-colors">' +
+            '<span class="canvas-color-dot selected" data-color="#FF4081" style="background:#FF4081" title="Rosa"></span>' +
+            '<span class="canvas-color-dot" data-color="#00E5FF" style="background:#00E5FF" title="Ciano"></span>' +
+            '<span class="canvas-color-dot" data-color="#FFEB3B" style="background:#FFEB3B" title="Amarelo"></span>' +
+            '<span class="canvas-color-dot" data-color="#76FF03" style="background:#76FF03" title="Verde"></span>' +
+            '<span class="canvas-color-dot" data-color="#FF6D00" style="background:#FF6D00" title="Laranja"></span>' +
+        '</div>';
     wrap.appendChild(controls);
 
     // Fullscreen: resize canvas proportionally to fill screen, then redraw
@@ -4434,12 +4451,24 @@ function _ensureZoomWrap(cv) {
         if (action === 'draw') {
             _canvasDrawMode[id] = !_canvasDrawMode[id];
             const drawBtn = controls.querySelector('[data-action="draw"]');
+            const colorBar = controls.querySelector('.canvas-draw-colors');
             if (drawBtn) {
                 drawBtn.classList.toggle('active', !!_canvasDrawMode[id]);
                 drawBtn.innerHTML = _canvasDrawMode[id] ? '&#9998; Desenhando...' : '&#9998; Desenhar';
             }
+            if (colorBar) colorBar.classList.toggle('visible', !!_canvasDrawMode[id]);
             cv.style.cursor = _canvasDrawMode[id] ? 'crosshair' : '';
         }
+        e.stopPropagation();
+    });
+
+    // Color picker clicks
+    controls.addEventListener('click', function(e) {
+        const dot = e.target.closest('.canvas-color-dot');
+        if (!dot) return;
+        _canvasDrawColor[id] = dot.dataset.color;
+        controls.querySelectorAll('.canvas-color-dot').forEach(function(d) { d.classList.remove('selected'); });
+        dot.classList.add('selected');
         e.stopPropagation();
     });
 
@@ -4499,9 +4528,8 @@ function _ensureZoomWrap(cv) {
             const pt = _clientToDataCoords(e.clientX, e.clientY);
             if (!pt) return;
             if (!_canvasDrawings[id]) _canvasDrawings[id] = [];
-            const drawColors = ['#FF4081','#00E5FF','#FFEB3B','#76FF03','#FF6D00','#E040FB','#18FFFF','#FFD740'];
-            const cIdx = _canvasDrawings[id].length % drawColors.length;
-            _drawingStroke = { color: drawColors[cIdx], width: 2.5, points: [pt] };
+            const selColor = _canvasDrawColor[id] || '#FF4081';
+            _drawingStroke = { color: selColor, width: 2.5, points: [pt] };
             _canvasDrawings[id].push(_drawingStroke);
             e.preventDefault();
             return;
